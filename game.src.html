@@ -1,0 +1,487 @@
+<title>G$tick Golf</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Big+Shoulders+Display:wght@700;800;900&family=Fraunces:ital,opsz,wght,SOFT,WONK@1,9,900,50,1&display=swap">
+<style>
+/* Layout: full-bleed 3D course; HUD floats as dark glass plaques pinned to the screen edges; menus are a left-anchored scorecard column over a live course flyover. */
+:root {
+  --ground: #0e1813;
+  --glass: rgba(11, 21, 16, 0.64);
+  --glass-strong: rgba(9, 17, 13, 0.9);
+  --ink: #f1f5ee;
+  --ink-dim: #aebdb1;
+  --line: rgba(241, 245, 238, 0.15);
+  --flag: #f4c531;
+  --flag-ink: #1d1704;
+  --birdie: #ef5b43;
+  --bogey: #66a8ea;
+  --good: #7fdc95;
+  --over: #ff6a4d;
+  --f-display: 'Big Shoulders Display', 'Arial Narrow', 'Helvetica Neue', Impact, sans-serif;
+  --f-body: 'Archivo', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* brand (round 3): the in-game HUD, swing meter, pin marker, club, tracer and logo use only these colours */
+  --cream: #F3ECD8; --cream2: #E4DAC0; --green: #1F3A2A; --green2: #2F5641; --yellow: #E3B93F; --warn: #B94529;
+  --dimgreen: rgba(31, 58, 42, 0.88);      /* backdrop behind the hole card and the results: green at 88% */
+  --f-brand: 'Fraunces', Georgia, serif;   /* italic 900, axes pinned in the font request: opsz 9, SOFT 50, WONK 1 */
+  --menu-bg: #0c1510;                      /* what sits behind the menu wordmark (the club's cut-out stroke matches it) */
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; overflow: hidden; background: var(--ground); color: var(--ink);
+  font-family: var(--f-body); font-size: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+#app {
+  position: fixed; inset: 0; overflow: hidden; background: var(--ground);
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+#gl, #fx { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#fx { pointer-events: none; }
+#touch { position: absolute; inset: 0; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- HUD (round 3: cream cards, brand face for big numbers, Archivo for labels) ---------- */
+.hud { position: absolute; pointer-events: none; display: flex; gap: 8px; }
+.hud > * { pointer-events: auto; }
+.brandtxt { font-family: var(--f-brand); font-style: italic; font-weight: 900; font-variation-settings: 'opsz' 9, 'SOFT' 50, 'WONK' 1; }
+.hud-top {
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  justify-content: space-between; align-items: flex-start;
+}
+.card {
+  background: var(--cream); color: var(--green); border-radius: 10px; border-left: 4px solid var(--green);
+  box-shadow: 0 2px 2px rgba(31, 58, 42, 0.28); box-sizing: border-box;
+}
+.stack { display: flex; flex-direction: column; gap: 8px; width: 170px; pointer-events: none; }
+.stack > * { pointer-events: auto; }
+.card.info { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 8px; min-width: 0; }
+.card.info .gl { width: 22px; height: 22px; flex: 0 0 22px; display: block; }
+.card.info .tx { display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 1 1 auto; line-height: 1.1; }
+.card.info .lbl { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card.info .sub { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.card.info .pen { font-size: 19px; font-weight: 800; color: var(--warn); white-space: nowrap; }   /* warn on cream is 4.5:1 */
+.card.info .val { font-size: 18px; font-weight: 800; white-space: nowrap; }
+.card.info .unit { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; margin-left: 3px; }
+.holecard { display: flex; align-items: stretch; overflow: hidden; border-left: 0; height: 64px; }
+.holecard .hb { background: var(--green); color: var(--cream); display: flex; align-items: center; gap: 8px; padding: 0 10px; }
+.holecard .hn { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.holecard .cap { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; line-height: 1; }
+.holecard .hn b { font-size: 32px; line-height: 0.95; }
+.holecard .pl { display: flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; line-height: 1; white-space: nowrap; }
+.holecard .sb { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 12px; min-width: 52px; }
+.holecard .sb b { font-size: 30px; line-height: 0.95; }
+.holecard .sb span { font-size: 11px; font-weight: 700; margin-top: 2px; white-space: nowrap; }
+
+.hud-bot {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  height: 84px; justify-content: space-between; align-items: center; pointer-events: none;
+}
+.rbtn {
+  border-radius: 50%; border: 0; background: var(--cream); color: var(--green); padding: 0; display: grid; place-items: center;
+  box-shadow: 0 2px 2px rgba(31, 58, 42, 0.28);
+}
+.rbtn.pause { width: 52px; height: 52px; }
+.rbtn.map { width: 56px; height: 56px; }
+.rbtn.map.on { background: var(--green); color: var(--cream); }
+.rbtn svg { width: 24px; height: 24px; }
+.clubpick { position: absolute; left: 50%; transform: translateX(-50%); bottom: 0; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+.clubpick > * { pointer-events: auto; }
+.clubpick .arrow {
+  width: 44px; height: 44px; border-radius: 50%; border: 0; padding: 0; background: var(--cream); color: var(--green);
+  font-size: 30px; line-height: 1; font-weight: 700; display: grid; place-items: center; box-shadow: 0 2px 2px rgba(31, 58, 42, 0.28);
+}
+.clubpick .arrow:active, .rbtn:active { background: var(--cream2); }
+.clubball {
+  width: 84px; height: 84px; border-radius: 50%; background: var(--green); color: var(--cream); box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 2px 2px rgba(31, 58, 42, 0.28);
+}
+.clubball b { font-size: 34px; line-height: 0.95; }
+.clubball b i { font-style: inherit; font-size: 0.74em; margin-left: 0.04em; }   /* the I, W or H after a number: smaller, so 8I does not read as 81 */
+.clubball span { font-size: 12px; font-weight: 700; color: var(--yellow); margin-top: 3px; white-space: nowrap; }
+
+#toast {
+  position: absolute; left: 50%; top: 24%; transform: translate(-50%, -8px); text-align: center; pointer-events: none;
+  opacity: 0; transition: opacity 0.25s, transform 0.25s; width: min(90vw, 460px);
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast .tcard { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 16px 9px; max-width: 100%; }
+#toast .q { font-size: 30px; line-height: 1.05; letter-spacing: 0.01em; }
+#toast .q:empty { display: none; }
+#toast .q.pure .lab { text-decoration: underline var(--yellow) 4px; text-underline-offset: 5px; }
+#toast .q.pen, #toast .q .tag.pen { color: var(--warn); }   /* warn on cream is 4.5:1 */
+#toast .q .tag { font-size: 20px; }
+#toast .d { font-size: 13px; font-weight: 600; }
+/* score popup (round 4): the PURE toast's card and motion; the word in the brand face, yellow underline under par, warn over */
+#banner {
+  position: absolute; left: 50%; top: 34%; transform: translate(-50%, -8px); text-align: center; pointer-events: none;
+  opacity: 0; transition: opacity 0.25s, transform 0.25s; width: min(90vw, 460px);
+}
+#banner.show { opacity: 1; transform: translate(-50%, 0); }
+#banner .tcard { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; padding: 9px 18px 10px; max-width: 100%; }
+#banner .q { font-size: 34px; line-height: 1.05; letter-spacing: 0.01em; }
+#banner .q.under .lab { text-decoration: underline var(--yellow) 4px; text-underline-offset: 6px; }
+#banner .q.over .lab { text-decoration: underline var(--warn) 4px; text-underline-offset: 6px; }
+#banner .d { font-size: 13px; font-weight: 600; }
+#banner .d:empty { display: none; }
+#perf {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 106px);
+  pointer-events: none; font: 600 11px ui-monospace, 'SF Mono', Menlo, monospace; color: var(--ink);
+  background: var(--glass-strong); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; white-space: nowrap;
+}
+#maphint {
+  position: absolute; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 168px);
+  pointer-events: none; font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+}
+
+/* ---------- screens ---------- */
+.screen {
+  position: absolute; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  background: linear-gradient(90deg, rgba(8, 15, 11, 0.9) 0%, rgba(8, 15, 11, 0.72) 48%, rgba(8, 15, 11, 0.2) 100%);
+  padding-top: calc(env(safe-area-inset-top, 0px) + 24px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+.screen.dim { background: rgba(8, 15, 11, 0.8); }
+.panel { width: 100%; max-width: 540px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+@media (min-width: 760px) { .panel { margin-left: clamp(0px, 6vw, 96px); } }
+.panel.wide { max-width: 860px; }
+.brand { display: flex; align-items: flex-end; gap: 10px; margin-top: 4vh; }
+.brand h1 { margin: 0; font-family: var(--f-display); font-weight: 900; font-size: clamp(76px, 17vw, 132px); line-height: 0.8; letter-spacing: -0.01em; }
+.brand .sub {
+  background: var(--flag); color: var(--flag-ink); font-weight: 800; font-size: 13px; letter-spacing: 0.3em; padding: 4px 6px 4px 9px; margin-bottom: 6px;
+}
+.tag { margin: 0; color: var(--ink-dim); font-size: 15px; line-height: 1.5; max-width: 40ch; }
+.wallet { display: flex; gap: 16px; align-items: center; font-size: 13px; color: var(--ink-dim); font-weight: 600; }
+.wallet b { color: var(--ink); font-family: var(--f-display); font-size: 22px; font-weight: 800; margin-right: 4px; }
+.coin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--flag); box-shadow: inset 0 -2px 0 rgba(0,0,0,0.25); margin-right: 6px; vertical-align: -1px; }
+.menu-list { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--line); }
+.mbtn {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; text-align: left;
+  background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 14px 4px;
+  font-family: var(--f-display); font-weight: 800; font-size: 30px; letter-spacing: 0.02em; line-height: 1;
+}
+.mbtn small { font-family: var(--f-body); font-size: 13px; font-weight: 600; color: var(--ink-dim); letter-spacing: 0; text-align: right; }
+.mbtn:hover, .mbtn:active { color: var(--flag); }
+.mbtn.primary { color: var(--flag); }
+.settings { display: flex; flex-wrap: wrap; gap: 8px; }
+.tog {
+  border: 1px solid var(--line); background: var(--glass); border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 700;
+  display: inline-flex; gap: 8px; align-items: center;
+}
+.tog i { font-style: normal; color: var(--flag); }
+.back {
+  align-self: flex-start; border: 1px solid var(--line); background: var(--glass); border-radius: 999px; padding: 7px 14px 7px 10px;
+  font-size: 13px; font-weight: 700;
+}
+.h2 { margin: 0; font-family: var(--f-display); font-weight: 900; font-size: 48px; line-height: 0.9; }
+.lede { margin: 0; color: var(--ink-dim); font-size: 14px; line-height: 1.5; max-width: 52ch; }
+.course { display: flex; flex-direction: column; gap: 10px; }
+.course h3 { margin: 6px 0 0; font-family: var(--f-display); font-weight: 800; font-size: 24px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.course h3 small { font-family: var(--f-body); font-size: 12px; color: var(--ink-dim); font-weight: 600; }
+.evgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 520px) { .evgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ev {
+  text-align: left; background: var(--glass); border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-width: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ev:not([disabled]):hover { border-color: var(--flag); }
+.ev[disabled] { opacity: 0.42; cursor: default; }
+.ev .top { display: flex; justify-content: space-between; align-items: baseline; }
+.ev .no { font-family: var(--f-display); font-weight: 900; font-size: 26px; line-height: 0.9; }
+.ev .stars { color: var(--flag); letter-spacing: 1px; font-size: 13px; }
+.ev .stars .off { color: var(--line); }
+.ev .nm { font-weight: 700; font-size: 13px; }
+.ev .rw { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-dim); font-weight: 600; gap: 6px; }
+.ev .rw b { color: var(--ink); }
+.diff { display: inline-flex; gap: 2px; }
+.diff i { width: 6px; height: 6px; border-radius: 1px; background: var(--line); display: inline-block; }
+.diff i.on { background: var(--ink); }
+.shoprow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.shoprow h4 { margin: 0; font-family: var(--f-display); font-weight: 800; font-size: 24px; }
+.shoprow p { margin: 3px 0 0; font-size: 13px; color: var(--ink-dim); line-height: 1.4; }
+.pips { display: flex; gap: 4px; margin-top: 8px; }
+.pips i { width: 22px; height: 6px; border-radius: 2px; background: var(--line); }
+.pips i.on { background: var(--flag); }
+.buy {
+  border: 0; background: var(--flag); color: var(--flag-ink); font-weight: 800; border-radius: 8px; padding: 10px 14px; font-size: 13px; white-space: nowrap;
+}
+.buy[disabled] { background: var(--line); color: var(--ink-dim); cursor: default; }
+.howlist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; }
+.howlist li { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; font-size: 14px; line-height: 1.5; color: var(--ink-dim); }
+.howlist li b { font-family: var(--f-display); font-weight: 800; color: var(--ink); font-size: 18px; letter-spacing: 0.03em; line-height: 1.2; }
+.keys { font-size: 12px; color: var(--ink-dim); line-height: 1.7; }
+kbd { font-family: var(--f-body); font-size: 11px; font-weight: 700; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--ink); }
+.cta {
+  border: 0; background: var(--flag); color: var(--flag-ink); font-family: var(--f-display); font-weight: 900; font-size: 26px; letter-spacing: 0.04em;
+  border-radius: 10px; padding: 14px 18px; text-align: center;
+}
+.cta.ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+.ctarow { display: flex; gap: 8px; flex-wrap: wrap; }
+.ctarow > * { flex: 1 1 140px; }
+.ctarow .cta { font-size: 22px; white-space: nowrap; }
+
+/* scorecard */
+.cardwrap { overflow-x: auto; }
+table.sc { border-collapse: collapse; width: 100%; min-width: 360px; font-variant-numeric: tabular-nums; }
+table.sc th, table.sc td { text-align: center; padding: 8px 4px; border-bottom: 1px solid var(--line); font-size: 14px; }
+table.sc th { font-size: 10px; letter-spacing: 0.14em; color: var(--ink-dim); font-weight: 700; }
+table.sc td:first-child, table.sc th:first-child { text-align: left; font-size: 10px; letter-spacing: 0.14em; color: var(--ink-dim); font-weight: 700; padding-left: 0; }
+table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900; color: var(--ink); }
+.mk { display: inline-grid; place-items: center; width: 28px; height: 28px; font-weight: 800; font-size: 15px; }
+.mk.b1 { border: 2px solid var(--birdie); border-radius: 50%; color: var(--birdie); }
+.mk.b2 { border: 2px solid var(--birdie); border-radius: 50%; box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--birdie); color: var(--birdie); }
+.mk.o1 { border: 2px solid var(--bogey); color: var(--bogey); }
+.mk.o2 { border: 2px solid var(--bogey); box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--bogey); color: var(--bogey); }
+.mk.cur { color: var(--flag); }
+.bigscore { display: flex; align-items: flex-end; gap: 14px; }
+.bigscore .v { font-family: var(--f-display); font-weight: 900; font-size: 110px; line-height: 0.78; }
+.bigscore .k { color: var(--ink-dim); font-size: 14px; line-height: 1.5; padding-bottom: 6px; }
+.bigscore .k b { color: var(--ink); }
+.verdict { font-family: var(--f-display); font-weight: 800; font-size: 28px; line-height: 1.05; }
+.verdict.ok { color: var(--good); }
+.verdict.no { color: var(--over); }
+.starrow { font-size: 30px; letter-spacing: 6px; color: var(--flag); }
+.starrow .off { color: var(--line); }
+.earn { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-dim); }
+.earn div { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--line); padding: 4px 0; }
+.earn b { color: var(--ink); }
+.pausebox { display: flex; flex-direction: column; gap: 8px; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--f-display); font-weight: 800; font-size: 22px; letter-spacing: 0.1em; color: var(--ink-dim); background: var(--ground); }
+@media (prefers-reduced-motion: reduce) { #toast, #banner { transition: none; } }
+
+/* ---------- hole card and results (round 4): cream cards on a dim green backdrop ---------- */
+#scrCard.screen, #scrResults.screen { background: var(--dimgreen); }
+#scrCard .panel, #scrResults .panel {
+  background: var(--cream); color: var(--green); border-radius: 10px; border-left: 4px solid var(--green);
+  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.28); padding: 16px 14px 16px 14px; gap: 14px; box-sizing: border-box; margin-top: 2vh;
+}
+#scrCard .h2 { font-family: var(--f-brand); font-style: italic; font-weight: 900; font-variation-settings: 'opsz' 9, 'SOFT' 50, 'WONK' 1; font-size: 34px; line-height: 1; color: var(--green); }
+#scrCard .lede, #scrResults .lede { color: var(--green2); font-size: 13px; font-weight: 600; line-height: 1.4; }
+#scrCard .cardwrap, #scrResults .cardwrap { overflow-x: auto; }
+#scrCard table.sc, #scrResults table.sc { min-width: 0; width: 100%; table-layout: fixed; }
+#scrCard table.sc th, #scrCard table.sc td, #scrResults table.sc th, #scrResults table.sc td { padding: 6px 1px; border-bottom: 1px solid var(--cream2); color: var(--green); font-size: 14px; font-weight: 700; }
+#scrCard table.sc th, #scrResults table.sc th { font-size: 10px; letter-spacing: 0.06em; color: var(--green2); font-weight: 800; }
+#scrCard table.sc td:first-child, #scrCard table.sc th:first-child, #scrResults table.sc td:first-child, #scrResults table.sc th:first-child { width: 50px; font-size: 10px; letter-spacing: 0.06em; color: var(--green2); font-weight: 800; }
+#scrCard table.sc th:last-child, #scrResults table.sc th:last-child { width: 40px; }
+#scrCard table.sc .tot, #scrResults table.sc .tot { font-family: var(--f-brand); font-style: italic; font-weight: 900; font-variation-settings: 'opsz' 9, 'SOFT' 50, 'WONK' 1; font-size: 22px; color: var(--green); }
+/* score cells: under par a yellow chip (an inner green ring for eagle or better), par plain, over par cream2 with warn text
+   (an inner warn ring for double or worse). Numbers in the brand face at 20px */
+#scrCard .mk, #scrResults .mk { width: 28px; height: 28px; border-radius: 7px; border: 0; box-shadow: none; color: var(--green);
+  font-family: var(--f-brand); font-style: italic; font-weight: 900; font-variation-settings: 'opsz' 9, 'SOFT' 50, 'WONK' 1; font-size: 20px; line-height: 1; }
+#scrCard .mk.b1, #scrResults .mk.b1 { background: var(--yellow); color: var(--green); }
+#scrCard .mk.b2, #scrResults .mk.b2 { background: var(--yellow); color: var(--green); box-shadow: inset 0 0 0 2px var(--green); }
+#scrCard .mk.o1, #scrResults .mk.o1 { background: var(--cream2); color: var(--warn); }
+#scrCard .mk.o2, #scrResults .mk.o2 { background: var(--cream2); color: var(--warn); box-shadow: inset 0 0 0 2px var(--warn); }
+#scrCard .mk.cur, #scrResults .mk.cur { color: var(--green2); }
+#scrCard .ctarow .cta, #scrResults .ctarow .cta {
+  font-family: var(--f-body); font-weight: 800; font-size: 16px; letter-spacing: 0.02em; min-height: 48px; border-radius: 10px; padding: 12px 14px;
+  background: var(--green); color: var(--cream); border: 0; box-shadow: 0 2px 2px rgba(31, 58, 42, 0.28);
+}
+#scrCard .ctarow .cta.ghost, #scrResults .ctarow .cta.ghost { background: var(--cream); color: var(--green); border: 2px solid var(--green); box-shadow: none; }
+#scrCard .ctarow .cta:active, #scrResults .ctarow .cta:active { background: var(--green2); }
+#scrCard .ctarow .cta.ghost:active, #scrResults .ctarow .cta.ghost:active { background: var(--cream2); }
+#scrResults .ctarow > * { flex: 1 1 96px; }
+#scrResults .bigscore .v { font-family: var(--f-brand); font-style: italic; font-weight: 900; font-variation-settings: 'opsz' 9, 'SOFT' 50, 'WONK' 1; font-size: 88px; line-height: 0.9; color: var(--green); }
+#scrResults .bigscore .k { color: var(--green2); font-size: 14px; font-weight: 600; }
+#scrResults .bigscore .k b { color: var(--green); font-family: var(--f-brand); font-style: italic; font-weight: 900; font-variation-settings: 'opsz' 9, 'SOFT' 50, 'WONK' 1; font-size: 22px; }
+#scrResults .verdict { font-family: var(--f-body); font-weight: 800; font-size: 18px; line-height: 1.3; }
+#scrResults .verdict.ok { color: var(--green); }
+#scrResults .verdict.no { color: var(--warn); }
+#scrResults .starrow { font-size: 30px; letter-spacing: 6px; color: var(--yellow); -webkit-text-stroke: 1.5px var(--green); }
+#scrResults .starrow .off { color: transparent; -webkit-text-stroke: 1.5px var(--green2); }
+#scrResults .earn { color: var(--green2); font-size: 13px; font-weight: 600; }
+#scrResults .earn div { border-bottom: 1px dashed var(--cream2); }
+#scrResults .earn b { color: var(--green); }
+@media (orientation: landscape) and (max-height: 520px) {
+  .stack { flex-direction: row; width: auto; }
+  .stack .card.info { width: 170px; }
+  #toast { top: calc(env(safe-area-inset-top, 0px) + 72px); }
+  #maphint { top: calc(env(safe-area-inset-top, 0px) + 80px); }
+}
+/* menu wordmark: the line through the S is a golf club */
+.logo {
+  margin: 4vh 0 0; font-family: var(--f-brand); font-style: italic; font-weight: 900; font-variation-settings: 'opsz' 9, 'SOFT' 50, 'WONK' 1;
+  font-size: clamp(44px, 12.5vw, 96px); line-height: 1.05; white-space: nowrap; color: var(--cream);
+}
+.logo .s { position: relative; display: inline-block; margin: 0 0.02em 0 0.05em; }
+.logo .s svg { position: absolute; overflow: visible; pointer-events: none; height: 1.16em; width: 0.3867em; top: -0.15em; left: calc(50% - 0.1933em + 0.01em); }
+@media (max-width: 420px) {
+}
+</style>
+
+<div id="app">
+  <canvas id="gl"></canvas>
+  <div id="touch"></div>
+  <canvas id="fx"></canvas>
+
+  <div class="hud hud-top" id="hudTop" hidden>
+    <div class="stack">
+      <div class="card info" id="lieChip">
+        <svg class="gl" viewBox="0 0 24 24" aria-hidden="true"><path id="lieGlyph" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M4 20h16 M12 20V9 M8 9h8"/></svg>
+        <div class="tx"><span class="lbl" id="lieTxt">Tee</span><span class="sub" id="lieDet" hidden></span></div>
+        <span class="pen num" id="liePen" hidden></span>
+      </div>
+      <div class="card info">
+        <svg class="gl" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M7 21V3"/><path fill="currentColor" d="M7.5 3.5h10l-3 3.5 3 3.5h-10z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 21h7"/></svg>
+        <div class="tx"><span class="val num" id="pinDist">412 yd</span><span class="sub">to pin</span></div>
+      </div>
+      <div class="card info" title="Wind relative to your aim">
+        <svg class="gl" viewBox="-20 -20 40 40" aria-hidden="true"><g id="windArrow"><path d="M0 -17 L9 2 L3 0 L3 16 L-3 16 L-3 0 L-9 2 Z" fill="currentColor"/></g></svg>
+        <div class="tx"><span class="val num"><b id="windSpd">0</b><span class="unit" id="windUnit">MPH</span></span><span class="sub" id="windDesc">Calm</span></div>
+      </div>
+    </div>
+    <div class="card holecard">
+      <div class="hb">
+        <div class="hn"><span class="cap">HOLE</span><b id="hHole" class="brandtxt num">1</b></div>
+        <div class="pl"><span id="hL1" class="num">PAR 4</span><span id="hLen" class="num">412 YD</span></div>
+      </div>
+      <div class="sb"><b class="brandtxt num" id="relChip" title="Round score vs par">E</b><span class="num" id="hShot">Shot 1</span></div>
+    </div>
+  </div>
+
+  <div id="maphint" hidden>TAP THE COURSE TO AIM</div>
+  <div id="perf" hidden></div>
+
+  <div class="hud hud-bot" id="hudBot" hidden>
+    <button class="rbtn pause" id="btnPause" aria-label="Pause">
+      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4.2" height="14" rx="1.6"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.6"/></svg>
+    </button>
+    <div class="clubpick">
+      <button class="arrow" id="clubPrev" aria-label="Previous club">‹</button>
+      <div class="clubball"><b class="brandtxt" id="clubName">D</b><span id="clubCarry" class="num">245 yd</span></div>
+      <button class="arrow" id="clubNext" aria-label="Next club">›</button>
+    </div>
+    <button class="rbtn map" id="btnMap" aria-label="Toggle map view" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M3 6.5l5.5-2.5 7 2.5 5.5-2.5v13.5l-5.5 2.5-7-2.5-5.5 2.5z M8.5 4v13.5 M15.5 6.5v13.5"/></svg>
+    </button>
+  </div>
+
+  <div id="toast"><div class="card tcard"><div class="q brandtxt" id="tQ"></div><div class="d num" id="tD"></div></div></div>
+  <div id="banner"><div class="card tcard"><div class="q brandtxt" id="bW"></div><div class="d" id="bS"></div></div></div>
+
+  <!-- MENU -->
+  <div class="screen" id="scrMenu" hidden>
+    <div class="panel">
+      <h1 class="logo" aria-label="G$tick Golf">G<span class="s">S<svg viewBox="0 0 100 300" aria-hidden="true"><g transform="rotate(13 50 150)" fill="currentColor" stroke="var(--menu-bg)" stroke-width="5" paint-order="stroke" stroke-linejoin="round"><path d="M41 80 L59 80 L58 250 L42 250 Z"/><rect x="33" y="0" width="34" height="92" rx="17"/><path d="M60 236 L60 268 C60 284 54 292 40 292 L-4 292 C-16 292 -22 284 -20 274 C-18 266 -10 262 0 262 L34 262 C40 262 42 258 42 252 L42 236 Z"/></g></svg></span>tick Golf</h1>
+      <p class="tag">Pull back, flick through. Real ball flight with spin and wind, lies that bite, and greens that break.</p>
+      <div class="wallet"><span><span class="coin"></span><b id="mCoins" class="num">0</b>coins</span><span id="mStars"></span></div>
+      <div class="menu-list">
+        <button class="mbtn primary" id="mContinue" hidden>Continue <small id="mContinueSub"></small></button>
+        <button class="mbtn" id="mTour">Tour <small id="mTourSub"></small></button>
+        <button class="mbtn" id="mDaily">Daily Round <small id="mDailySub"></small></button>
+        <button class="mbtn" id="mQuick">Quick Round <small>6 random holes</small></button>
+        <button class="mbtn" id="mShop">Pro Shop <small id="mShopSub">Upgrade your bag</small></button>
+        <button class="mbtn" id="mHow">How to play <small>Swing, aim, putt</small></button>
+      </div>
+      <div class="settings">
+        <button class="tog" id="tSound">Sound <i id="tSoundV">On</i></button>
+        <button class="tog" id="tUnits">Units <i id="tUnitsV">Yards</i></button>
+        <button class="tog" id="tGuide">Landing guide <i id="tGuideV">On</i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOUR -->
+  <div class="screen" id="scrTour" hidden>
+    <div class="panel wide">
+      <button class="back" data-back>‹ Menu</button>
+      <h2 class="h2">The Tour</h2>
+      <p class="lede">24 events across four courses, six holes each. Finish at or under the cut to unlock the next event. Two strokes better earns a second star, four strokes better a third.</p>
+      <div id="tourList" class="course"></div>
+    </div>
+  </div>
+
+  <!-- SHOP -->
+  <div class="screen" id="scrShop" hidden>
+    <div class="panel">
+      <button class="back" data-back>‹ Menu</button>
+      <h2 class="h2">Pro Shop</h2>
+      <div class="wallet"><span><span class="coin"></span><b id="sCoins" class="num">0</b>coins</span></div>
+      <p class="lede">Earn coins with pars and better, and with new stars on the Tour.</p>
+      <div id="shopList"></div>
+    </div>
+  </div>
+
+  <!-- HOW -->
+  <div class="screen" id="scrHow" hidden>
+    <div class="panel">
+      <button class="back" id="howBack">‹ Menu</button>
+      <h2 class="h2">How to play</h2>
+      <ul class="howlist">
+        <li><b>SWING</b><span>Press anywhere in the lower half of the screen. Drag straight down to set power, then flick straight back up past where you started.</span></li>
+        <li><b>SHAPE</b><span>Your flick is the club path of a right-handed swing. Drift right on the way up and the ball starts right and draws left. Drift left and it starts left and fades or slices right.</span></li>
+        <li><b>TEMPO</b><span>A slow upswing loses distance. Pulling into the red zone past 100% adds yards but sprays the ball.</span></li>
+        <li><b>AIM</b><span>Drag left or right in the upper half, or open Map and tap where you want to go. The ring shows full-power carry with no wind.</span></li>
+        <li><b>LIES</b><span>Rough costs distance and spin. Bunkers cost more unless you take a wedge. Water and out of bounds cost a stroke.</span></li>
+        <li><b>PUTT</b><span>The grid and drifting dots show the slope; dots roll downhill, so play above the hole. The putter's stroke length steps up with the putt and is shown under the club name. Dead-weight putts fall in off the lip; firm ones need to be centered.</span></li>
+        <li><b>FAST</b><span>Hold anywhere while the ball is moving to fast-forward.</span></li>
+      </ul>
+      <p class="keys">Keyboard: <kbd>←</kbd> <kbd>→</kbd> aim (hold <kbd>Shift</kbd> for fine), <kbd>↑</kbd> <kbd>↓</kbd> club, <kbd>M</kbd> map, <kbd>Space</kbd> fast-forward, <kbd>Esc</kbd> pause. Trackpad scroll also aims.</p>
+      <button class="cta" id="howGo" hidden>Tee it up</button>
+    </div>
+  </div>
+
+  <!-- SCORECARD -->
+  <div class="screen dim" id="scrCard" hidden>
+    <div class="panel">
+      <h2 class="h2" id="cardTitle">Scorecard</h2>
+      <p class="lede" id="cardSub"></p>
+      <div class="cardwrap"><table class="sc" id="cardTable"></table></div>
+      <div class="ctarow"><button class="cta" id="cardNext">Next hole</button></div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="screen dim" id="scrResults" hidden>
+    <div class="panel">
+      <p class="lede" id="resEvent"></p>
+      <div class="bigscore"><div class="v num" id="resRel">E</div><div class="k num" id="resK"></div></div>
+      <div class="verdict" id="resVerdict"></div>
+      <div class="starrow" id="resStars"></div>
+      <div class="cardwrap"><table class="sc" id="resTable"></table></div>
+      <div class="earn" id="resEarn"></div>
+      <div class="ctarow">
+        <button class="cta" id="resNext">Next event</button>
+        <button class="cta ghost" id="resAgain">Play again</button>
+        <button class="cta ghost" id="resMenu">Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAUSE -->
+  <div class="screen dim" id="scrPause" hidden>
+    <div class="panel">
+      <h2 class="h2">Paused</h2>
+      <p class="lede" id="pauseSub"></p>
+      <div class="pausebox">
+        <button class="cta" id="pResume">Resume</button>
+        <button class="cta ghost" id="pCard">Scorecard</button>
+        <button class="cta ghost" id="pHow">How to play</button>
+        <button class="cta ghost" id="pQuit">Quit round</button>
+      </div>
+      <div class="settings">
+        <button class="tog" id="pSound">Sound <i id="pSoundV">On</i></button>
+        <button class="tog" id="pGuide">Landing guide <i id="pGuideV">On</i></button>
+        <button class="tog" id="pPerf">Perf <i id="pPerfV">Off</i></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="loading" id="loading">LOADING COURSE…</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/*__ENGINE__*/
+</script>
+<script>
+/*__GAME__*/
+</script>

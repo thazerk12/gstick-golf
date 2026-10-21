@@ -1,0 +1,8 @@
+# local only
+node_modules
+tempo-golf.html
+*.zip
+# generated test output and screenshots
+test/sounds/
+test/shots*/
+test/out/
