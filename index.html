@@ -85,6 +85,13 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 .card.info .pen { font-size: 19px; font-weight: 800; color: var(--warn); white-space: nowrap; }   /* warn on cream is 4.5:1 */
 .card.info .val { font-size: 18px; font-weight: 800; white-space: nowrap; }
 .card.info .unit { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; margin-left: 3px; }
+/* round 5: while swinging the lie card shows the power (brand face) and the carry (Archivo); past 100% the number is warn */
+.card.info .pw { display: flex; align-items: baseline; gap: 7px; min-width: 0; white-space: nowrap; }
+.card.info .pw[hidden] { display: none; }
+.card.info .pw b { font-size: 26px; line-height: 1; }
+.card.info .pw b.over { color: var(--warn); }
+.card.info .pw span { font-size: 13px; font-weight: 700; }
+#lieChip.power .tx, #lieChip.power .pen { display: none; }
 .holecard { display: flex; align-items: stretch; overflow: hidden; border-left: 0; height: 64px; }
 .holecard .hb { background: var(--green); color: var(--cream); display: flex; align-items: center; gap: 8px; padding: 0 10px; }
 .holecard .hn { display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -123,11 +130,13 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 .clubball b i { font-style: inherit; font-size: 0.74em; margin-left: 0.04em; }   /* the I, W or H after a number: smaller, so 8I does not read as 81 */
 .clubball span { font-size: 12px; font-weight: 700; color: var(--yellow); margin-top: 3px; white-space: nowrap; }
 
+/* round 5: the toast, the score / hole popup and the map hint sit in the band under the HUD cards, above the horizon at address */
 #toast {
-  position: absolute; left: 50%; top: 24%; transform: translate(-50%, -8px); text-align: center; pointer-events: none;
+  position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 166px); transform: translate(-50%, -8px); text-align: center; pointer-events: none;
   opacity: 0; transition: opacity 0.25s, transform 0.25s; width: min(90vw, 460px);
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast.low { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 110px); }   /* the contact toast in flight: above the bottom buttons */
 #toast .tcard { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 16px 9px; max-width: 100%; }
 #toast .q { font-size: 30px; line-height: 1.05; letter-spacing: 0.01em; }
 #toast .q:empty { display: none; }
@@ -137,7 +146,7 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 #toast .d { font-size: 13px; font-weight: 600; }
 /* score popup (round 4): the PURE toast's card and motion; the word in the brand face, yellow underline under par, warn over */
 #banner {
-  position: absolute; left: 50%; top: 34%; transform: translate(-50%, -8px); text-align: center; pointer-events: none;
+  position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 166px); transform: translate(-50%, -8px); text-align: center; pointer-events: none;
   opacity: 0; transition: opacity 0.25s, transform 0.25s; width: min(90vw, 460px);
 }
 #banner.show { opacity: 1; transform: translate(-50%, 0); }
@@ -153,7 +162,7 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
   background: var(--glass-strong); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; white-space: nowrap;
 }
 #maphint {
-  position: absolute; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 168px);
+  position: absolute; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 172px);
   pointer-events: none; font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
 }
 
@@ -167,6 +176,8 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 }
 .screen.dim { background: rgba(8, 15, 11, 0.8); }
 .panel { width: 100%; max-width: 540px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+/* build label (round 5): bump it every round */
+#verLabel { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); font-family: var(--f-body); font-size: 11px; font-weight: 600; color: var(--cream2); pointer-events: none; }
 @media (min-width: 760px) { .panel { margin-left: clamp(0px, 6vw, 96px); } }
 .panel.wide { max-width: 860px; }
 .brand { display: flex; align-items: flex-end; gap: 10px; margin-top: 4vh; }
@@ -347,6 +358,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
         <svg class="gl" viewBox="0 0 24 24" aria-hidden="true"><path id="lieGlyph" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M4 20h16 M12 20V9 M8 9h8"/></svg>
         <div class="tx"><span class="lbl" id="lieTxt">Tee</span><span class="sub" id="lieDet" hidden></span></div>
         <span class="pen num" id="liePen" hidden></span>
+        <div class="pw" id="liePw" hidden><b class="brandtxt num" id="pwPct">0%</b><span class="num" id="pwCarry"></span></div>
       </div>
       <div class="card info">
         <svg class="gl" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M7 21V3"/><path fill="currentColor" d="M7.5 3.5h10l-3 3.5 3 3.5h-10z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 21h7"/></svg>
@@ -406,6 +418,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
         <button class="tog" id="tGuide">Landing guide <i id="tGuideV">On</i></button>
       </div>
     </div>
+    <div id="verLabel">Round 5</div>
   </div>
 
   <!-- TOUR -->
@@ -1624,13 +1637,13 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
 
   // close-up grass grain on the ground so it does not go blurry near the camera
   // green height tint (drawing only): brightness x (1 + A*tanh((y - pinY)/H)), faded to 0 across the fringe by a vertex weight
-  const greenTint = { uPinY: { value: 0 }, uTintA: { value: 0 }, uTintH: { value: 1 } };
+  const greenTint = { uPinY: { value: 0 }, uTintA: { value: 0 }, uTintH: { value: 1 }, uRelief: { value: 1 } };
   function addDetail(mat, amt, tint) {
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.detailMap = { value: detailTex };
       if (tint) Object.assign(sh.uniforms, greenTint);
       sh.vertexShader = 'varying vec3 vWPos;\n' + (tint ? 'attribute float tintW;\nvarying float vTintW;\n' : '') + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;' + (tint ? '\n  vTintW = tintW;' : ''));
-      sh.fragmentShader = 'uniform sampler2D detailMap;\nvarying vec3 vWPos;\n' + (tint ? 'uniform float uPinY;\nuniform float uTintA;\nuniform float uTintH;\nvarying float vTintW;\n' : '') + sh.fragmentShader.replace('#include <map_fragment>', [
+      sh.fragmentShader = 'uniform sampler2D detailMap;\nvarying vec3 vWPos;\n' + (tint ? 'uniform float uPinY;\nuniform float uTintA;\nuniform float uTintH;\nuniform float uRelief;\nvarying float vTintW;\n' : '') + sh.fragmentShader.replace('#include <map_fragment>', [
         '#include <map_fragment>',
         '  float dCam = length(vWPos - cameraPosition);',
         '  float gA = texture2D(detailMap, vWPos.xz * 0.63).r;',
@@ -1640,7 +1653,8 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
         '  float nearF = (1.0 - smoothstep(5.0, 60.0, dCam)) * ' + amt.toFixed(3) + ';',
         '  diffuseColor.rgb *= (0.965 + 0.07 * gC) * (0.98 + 0.04 * gD) * mix(1.0, 0.8 + 0.4 * (gA * 0.5 + gB * 0.5), nearF);',
         // GLSL ES 1.0 has no tanh
-        tint ? '  float tz = clamp((vWPos.y - uPinY) / uTintH, -8.0, 8.0); float te = exp(2.0 * tz);\n  diffuseColor.rgb *= 1.0 + uTintA * vTintW * (te - 1.0) / (te + 1.0);' : '',
+        // round 5: the green mesh is drawn with its relief exaggerated; the tint works from the physical height
+        tint ? '  float tz = clamp((vWPos.y - uPinY) / (1.0 + (uRelief - 1.0) * vTintW) / uTintH, -8.0, 8.0); float te = exp(2.0 * tz);\n  diffuseColor.rgb *= 1.0 + uTintA * vTintW * (te - 1.0) / (te + 1.0);' : '',
       ].join('\n'));
     };
     mat.customProgramCacheKey = () => 'detail' + amt + (tint ? 't' : '');
@@ -1674,7 +1688,15 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
   const matPine = new THREE.MeshLambertMaterial({ vertexColors: true }); addSway(matPine, 0.0, 0.026);
   const matShrub = new THREE.MeshLambertMaterial({ vertexColors: true }); addSway(matShrub, 0.7, 0.02);
   const matWood = new THREE.MeshLambertMaterial({ vertexColors: true });
-  const matGrid = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2, depthWrite: false });
+  // slope grid (round 5): ribbons a fixed number of CSS px wide, built from segment ends (position, other end, side)
+  const matGrid = new THREE.ShaderMaterial({
+    uniforms: { uRes: { value: new THREE.Vector2(1, 1) }, uW: { value: 1.5 }, uColor: { value: new THREE.Color(PALETTE.cream) }, uA: { value: 0.35 } },
+    vertexShader: 'uniform vec2 uRes; uniform float uW; attribute vec3 other; attribute float side;\n' +
+      'void main() { vec4 a = projectionMatrix * modelViewMatrix * vec4(position, 1.0); vec4 b = projectionMatrix * modelViewMatrix * vec4(other, 1.0);\n' +
+      '  vec2 d = (b.xy / b.w - a.xy / a.w) * uRes; float l = length(d); d = l > 1e-6 ? d / l : vec2(1.0, 0.0);\n' +
+      '  a.xy += vec2(-d.y, d.x) * side * uW / uRes * a.w; gl_Position = a; }',
+    fragmentShader: 'uniform vec3 uColor; uniform float uA; void main() { gl_FragColor = vec4(uColor, uA); }',
+    transparent: true, depthWrite: false });
   const matCupWall = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.BackSide });
   const matCupBottom = new THREE.MeshLambertMaterial({ color: 0x2b2017 });
   // depth-only lid at the cup: drawn after the cup and ball, before the green, so the green cannot paint over the hole
@@ -2067,6 +2089,17 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     const a = h[j * w + i], b2 = h[j * w + i + 1], c = h[(j + 1) * w + i], d = h[(j + 1) * w + i + 1];
     return (a + (b2 - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
   }
+  // visual green relief (round 5, drawing only): h + (relief - 1) * w * (h - pin.y), w = 1 on the green, 0 at the fringe's outer
+  // edge (the tint weight), so the cup, the flagstick and the green's edge stay where they are. visOff fades the offset out
+  // between reliefFade m above the surface, so a ball in the air never jumps. Physics never sees any of this
+  function greenW(hole, x, z) { return 1 - E.smoothstep(1, 1 + hole.fringeW / Math.min(hole.grx, hole.grz), hole.greenQ(x, z)); }
+  function hVis(x, z, hole) { const h = hole || G.hole, y = h.height(x, z); return y + (FEEL.green.relief - 1) * greenW(h, x, z) * (y - h.pin.y); }
+  function visOff(x, z, above) {
+    const h = G.hole; if (!h || FEEL.green.relief === 1) return 0;
+    const w = greenW(h, x, z); if (w <= 0) return 0;
+    const F = FEEL.green.reliefFade;
+    return (FEEL.green.relief - 1) * w * (h.height(x, z) - h.pin.y) * (1 - E.smoothstep(F[0], F[1], Math.max(0, above)));
+  }
   function hFast(x, z) {
     const g = HG.g;
     if (g && x > g.x0 && z > g.z0 && x < g.x0 + g.nx * g.cell && z < g.z0 + g.nz * g.cell) return gridH(g, x, z);
@@ -2114,7 +2147,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     const pos = new Float32Array(NV * 3), uv = new Float32Array(NV * 2);
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
       const x = x0 + i * cell, z = z0 + j * cell, k = j * (n + 1) + i;
-      pos[k * 3] = x; pos[k * 3 + 1] = hole.height(x, z); pos[k * 3 + 2] = z;
+      pos[k * 3] = x; pos[k * 3 + 1] = hVis(x, z, hole); pos[k * 3 + 2] = z;   // round 5: drawn with the relief exaggerated
       uv[k * 2] = (x - b.minX) / W; uv[k * 2 + 1] = (z - b.minZ) / D;
     }
     const gh = new Float32Array(NV); for (let k = 0; k < NV; k++) gh[k] = pos[k * 3 + 1];
@@ -2133,7 +2166,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     const qF = 1 + hole.fringeW / Math.min(hole.grx, hole.grz), tw = new Float32Array(NV);
     for (let k = 0; k < NV; k++) tw[k] = 1 - E.smoothstep(1, qF, hole.greenQ(pos[k * 3], pos[k * 3 + 2]));
     geo.setAttribute('tintW', new THREE.BufferAttribute(tw, 1));
-    greenTint.uPinY.value = hole.pin.y; greenTint.uTintA.value = FEEL.green.tintA; greenTint.uTintH.value = FEEL.green.tintH;
+    greenTint.uPinY.value = hole.pin.y; greenTint.uTintA.value = FEEL.green.tintA; greenTint.uTintH.value = FEEL.green.tintH; greenTint.uRelief.value = FEEL.green.relief;
     if (!matGreen.map) matGreen.needsUpdate = true;
     matGreen.map = tex;
     const mesh = new THREE.Mesh(geo, matGreen);
@@ -2319,7 +2352,9 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
       if (hole.greenQ(x, z) > 0.97) continue;
       hole.normal(x, z, n);
       const sl = Math.sqrt(n.x * n.x + n.z * n.z) / n.y, l = Math.hypot(n.x, n.z) || 1;
-      dat.push({ x, z, y: hole.height(x, z), dx: n.x / l, dz: n.z / l, sl, ph: hash2(x, z) });
+      // round 5: on the drawn (exaggerated) surface, dropping at its steeper drawn slope; the flow speed is still the real slope
+      const m = 1 + (FEEL.green.relief - 1) * greenW(hole, x, z);
+      dat.push({ x, z, y: hVis(x, z, hole), dx: n.x / l, dz: n.z / l, sl, slv: sl * m, ph: hash2(x, z) });
       pts.push(x, 0, z);
     }
     const geo = new THREE.BufferGeometry();
@@ -2328,20 +2363,29 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     const P = new THREE.Points(geo, mat); P.frustumCulled = false; P.renderOrder = 4; P.visible = false;
     group.add(P);
     world.dots = P; world.dotData = dat;
-    const L = [], GS = 0.9, seg = 0.3, Rg = Math.max(hole.grx, hole.grz) + 0.5;
+    // slope grid (round 5): on the drawn surface, as screen-space ribbons (see matGrid)
+    const L = [], GS = FEEL.green.gridGap, seg = 0.3, Rg = Math.max(hole.grx, hole.grz) + 0.5;
     const line = (fx) => {
       for (let a = -Rg; a <= Rg; a += GS) {
         let prev = null;
         for (let b = -Rg; b <= Rg; b += seg) {
           const [x, z] = fx(a, b);
-          if (hole.greenQ(x, z) < 0.985) { const y = hole.height(x, z) + 0.012; if (prev) L.push(prev[0], prev[1], prev[2], x, y, z); prev = [x, y, z]; } else prev = null;
+          if (hole.greenQ(x, z) < 0.985) { const y = hVis(x, z, hole) + 0.012; if (prev) L.push(prev[0], prev[1], prev[2], x, y, z); prev = [x, y, z]; } else prev = null;
         }
       }
     };
     const ox = Math.round(hole.green.x / GS) * GS, oz = Math.round(hole.green.z / GS) * GS;
     line((a, b) => [ox + a, hole.green.z + b]); line((a, b) => [hole.green.x + b, oz + a]);
-    const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(L, 3));
-    const grid = new THREE.LineSegments(gg, matGrid); grid.frustumCulled = false; grid.renderOrder = 4; grid.visible = false;
+    const nS = L.length / 6, gp = new Float32Array(nS * 12), go = new Float32Array(nS * 12), gs = new Float32Array(nS * 4), gi = [];
+    for (let i = 0; i < nS; i++) {
+      const A = L.slice(i * 6, i * 6 + 3), B = L.slice(i * 6 + 3, i * 6 + 6);
+      [[A, B, 1], [A, B, -1], [B, A, -1], [B, A, 1]].forEach(([p, o, sd], k) => { gp.set(p, (i * 4 + k) * 3); go.set(o, (i * 4 + k) * 3); gs[i * 4 + k] = sd; });
+      const v = i * 4; gi.push(v, v + 1, v + 3, v, v + 3, v + 2);
+    }
+    const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.BufferAttribute(gp, 3)); gg.setAttribute('other', new THREE.BufferAttribute(go, 3));
+    gg.setAttribute('side', new THREE.BufferAttribute(gs, 1)); gg.setIndex(gi);
+    matGrid.uniforms.uW.value = FEEL.green.gridW; matGrid.uniforms.uA.value = FEEL.green.gridA;
+    const grid = new THREE.Mesh(gg, matGrid); grid.frustumCulled = false; grid.renderOrder = 4; grid.visible = false;
     group.add(grid); world.grid = grid;
   }
 
@@ -2552,16 +2596,22 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     // time scale at contact by power: eases from 1 to the minimum over easeIn s (smoothstep), then back to 1 over dur s;
     // no frame changes it by more than maxStep
     dip: { at100: 0.5, at30: 0.8, dur: 0.3, easeIn: 0.06, maxStep: 0.15 },
-    // swing path: f = sideways drift at the start line / swingLen. |f| <= dead: dev 0; else dev = sign(f)(|f| - dead)/span, clamped
-    // to +-max. PURE needs |f| <= pure (plus power, tempo and lie). The club's sideways tilt uses the same mapping, low-passed (tiltTau s)
-    path: { dead: 0.04, span: 0.84, max: 1.6, pure: 0.05, tiltTau: 0.06 },
+    // swing path (round 5): f = tan(phi), phi = the flick's angle from straight up (lowest point -> where it crosses the start
+    // line, right +). |f| <= dead: dev 0; else dev = sign(f)(|f| - dead)/span, clamped to +-max. PURE needs |f| <= pure (plus
+    // power, tempo and lie). The club's sideways tilt uses the same mapping once the finger has risen minRise px, low-passed
+    // (tiltTau s). Direction fan over the ball (full swings): radii fanR0..fanR1 x swingLen, half-angle = the STRAIGHT window
+    // atan(dead + 0.12 span), the PURE band atan(pure); alphas; fade in fanIn s from the press, out fanOut s from contact
+    path: { dead: 0.04, span: 0.84, max: 1.6, pure: 0.05, tiltTau: 0.06, minRise: 12,
+      fanR0: 0.30, fanR1: 0.55, fanA: 0.30, fanPureA: 0.45, fanLineA: 0.55, fanLineW: 1.5, fanIn: 0.25, fanOut: 0.15 },
     // camera: critically damped spring on position and look target, rate = cam.k * kToOmega (matches the old lerp's arrival
     // time); after a shot, a new aim more than orbitDeg off the camera's heading swings the camera round the ball over orbitT s
-    cam: { kToOmega: 1.5, orbitDeg: 60, orbitT: 1.1 },
+    cam: { kToOmega: 1.5, orbitDeg: 60, orbitT: 1.1, flightTopPad: 14, tiltEase: 6 },   // round 5: in flight the ball stays flightTopPad px below the HUD cards
     // shaft bend (drawing only): bend'' = -w^2 (bend + c*alpha*g) - 2 z w bend', alpha = angular accel of a+b; g drops to 0
-    // over releaseWidth s once the club is releaseLead s from the ball, so the shaft unloads and kicks forward at impact
-    flex: { omega: 42, zeta: 0.2, alphaTau: 0.01, alphaMax: 900, releaseLead: 0.046, releaseWidth: 0.006,
-      c: { driver: 1.15e-4, wood: 0.85e-4, iron: 0.55e-4, wedge: 0.42e-4, putter: 0 } },
+    // over releaseWidth s once the club is releaseLead s from the ball (round 5: timed by the downswing's own clock), stays 0 for
+    // releaseHold s after contact so the shaft whips through the ball, then comes back over releaseBack s. droop: toe-down bow
+    // out of the swing plane, as a share of the in-plane bend (so the bend reads from behind the ball)
+    flex: { omega: 42, zeta: 0.2, alphaTau: 0.01, alphaMax: 900, releaseLead: 0.046, releaseWidth: 0.006, releaseHold: 0.08, releaseBack: 0.12, droop: 0.5,
+      c: { driver: 2.3e-4, wood: 1.7e-4, iron: 1.21e-4, wedge: 0.924e-4, putter: 0 } },   // round 5: woods 2x round 4, irons 2.2x (peak tip <= 0.20 m driver, <= 0.10 m irons)
     tempoLift: 6,                                          // px: the downswing clock starts at the last sample this close to the lowest point
     // sounds. Impacts: noise burst (0.3 ms attack, `burst` s) through resonant bandpass modes [Hz, Q, gain]; `decay` = time to
     // -40 dB; `crack` = a direct high-passed click; `gain` = level at full strike. Turf, sand and rough are filtered noise.
@@ -2592,7 +2642,11 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     holeOut: { depth: 0.102, wallE: 0.3, poleE: 0.3, poleR: 0.0125, bottomE: 0.3, bottomFric: 0.4, rollTau: 0.07, settle: 0.6, push: 0.6, hitMin: 0.02, rattleMin: 0.1, rattleGap: 0.04, step: 0.001 },   // hitMin: slower wall contact is rolling along it
     ballCapEase: 0.3,                                      // s: ball size cap transition
     tracer: { wPerM: 0.004, wMin: 0.025, wMax: 1.6, start: 0.3, glow: 2.2, glowA: 0.45, coreA: 0.94, headBoost: 1.0, ballMax: 0.8, hold: 0.7, fade: 0.6 },   // half-width per m from the camera (min, max m); start taper; glow width x core; alphas; head boost; core at the ball <= ballMax x ball diameter; s (round 4: no edge, hold 1.2 -> 0.7)
-    meter: { w: 22, gap: 40, yellowFrom: 0.9, pctPx: 30 },   // swing meter: track px wide, px from the swing line, fill turns yellow above this, % text px
+    // swing zone (round 5): starts `below` x height under the ball, ends at the bottom buttons, never less than minH x height;
+    // swingLen = len x height, clamped to lenMin..lenMax px. Power stays linear in the pull (the same 112% cap)
+    swingZone: { below: 0.04, minH: 0.12, len: 0.25, lenMin: 140, lenMax: 260 },
+    hint: { chev: 9, bob: 3 },                              // first-shots hint: chevron half-width and bob (px)
+    hudSwingDim: 0.4,                                       // bottom buttons' opacity while swinging (round 5)
     fontWait: 1.5,                                         // s: longest wait for the brand face before the game starts without it
     pinMarker: { far: 60, near: 40, h: 18 },               // flag glyph over the pin: full above `far` m from the camera, gone under `near`; px tall
     club: { shaftR: [0.0126, 0.0075], gripR: [0.019, 0.0146], putterGripR: [0.022, 0.0177], head: 1.25, headWood: 1.35, headH: { wood: 0.5, iron: 0.65, putter: 0.6 }, seg: 8,
@@ -2601,7 +2655,11 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
       wood: { outline: [[-0.46, -0.03], [-0.3, 0.008], [-0.1, 0.016], [0.1, 0.016], [0.28, 0.008], [0.43, -0.035], [0.51, -0.16], [0.53, -0.34], [0.48, -0.55], [0.35, -0.75], [0.14, -0.88], [-0.1, -0.89], [-0.31, -0.78], [-0.45, -0.58], [-0.5, -0.32]],
         faceN: 6, crown: [0.01, -0.45], sole: 0.9, skirt: 0.32, edge: [0.985, 0.62], line: [0.955, 0.7], c1: [0.78, 0.88], c2: [0.45, 0.97], bulgeZ: 0.016,
         mark: [-0.1, -0.3, 0.905, 0.985, 0.006], hosel: [0.44, 0.62, -0.1] } },   // m: shaft and grip radii (top, bottom); head scale (woods: headWood); head height factor by class (keeps the ball visible at address); radial segments
-    green: { tintA: 0.14, tintH: 0.2, stripeAlpha: 0.35 },  // height tint: x(1 + tintA*tanh((y - pin.y)/tintH)); stripes 1.7-1.9% contrast by theme
+    green: { tintA: 0.14, tintH: 0.2, stripeAlpha: 0.35,  // height tint: x(1 + tintA*tanh((y - pin.y)/tintH)); stripes 1.7-1.9% contrast by theme
+      // round 5, drawing only: the green's height difference from the cup is drawn `relief` times larger (weight w: 1 on the
+      // green, 0 at the fringe's outer edge); a ball fades out of it between reliefFade[0] and [1] m above the surface.
+      // Slope grid: cream lines every gridGap m, gridW CSS px wide, gridA opacity, on the exaggerated surface
+      relief: 2.5, reliefFade: [0.3, 1.0], gridGap: 0.9, gridW: 1.5, gridA: 0.35 },
     roughPaint: { bandW: 6, bandContrast: 0.022, shadeW: 0.6, shadeDark: 0.08 },   // rough mowing bands (m, luma contrast) and the darker band outside the first cut (m, fraction darker)
     // rough lie decal: ellipse length along the line and width (m), darkening, soft rim (share of the radius); ball drawn sink x
     // its diameter lower, eased over sinkT s. At rest in the rough the decal stands in for the ball's contact shadow
@@ -2786,38 +2844,40 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     if (CV.flexVp != null) CV.flexAa += ((CV.v - CV.flexVp) / h - CV.flexAa) * (1 - Math.exp(-h / 0.01));
     CV.flexVp = CV.v;
     CV.flexAl += (al - CV.flexAl) * (1 - Math.exp(-h / F.alphaTau));
-    // release: once the club is within releaseLead s of the ball (from its own angle, speed and acceleration), the lag drive
-    // switches off over releaseWidth s, so the loaded shaft swings through and kicks forward at impact
+    // release: once the club is within releaseLead s of the ball, the lag drive switches off over releaseWidth s, so the loaded
+    // shaft swings through and kicks forward at impact. Round 5: the time to the ball comes from the downswing's own clock (tau
+    // reaches 1 at T_est; in the commit, Tc - t), and the drive stays off for releaseHold s after contact, then returns
     let g = 1;
-    if (F.releaseLead > 0 && CV.spec && CV.spec.type !== 'putter' && (CV.phase === 'down' || CV.phase === 'commit')) {
-      let tau = Infinity;
-      if (CV.phase === 'commit') tau = Math.max(0, CV.Tc - CV.t);
-      else {
-        const v = -CV.v, ac = -CV.flexAa, r = CV.a;
-        if (r <= 0) tau = 0;
-        else if (v > 1e-3) { tau = r / v; if (Math.abs(ac) > 1e-3) { const d = v * v + 2 * ac * r; if (d >= 0) { const q = (-v + Math.sqrt(d)) / ac; if (q > 0) tau = q; } } }
-      }
-      g = E.smoothstep(Math.max(0, F.releaseLead - F.releaseWidth), F.releaseLead, tau);
+    if (F.releaseLead > 0 && CV.spec && CV.spec.type !== 'putter') {
+      if (CV.phase === 'down' || CV.phase === 'commit') {
+        const tau = CV.phase === 'commit' ? Math.max(0, CV.Tc - CV.t) : Math.max(0, CV.Test - (CV.tSub - CV.tr0));
+        g = E.smoothstep(Math.max(0, F.releaseLead - F.releaseWidth), F.releaseLead, tau);
+        CV.flexTau = tau;
+      } else if (CV.phase === 'follow') g = E.smoothstep(F.releaseHold, F.releaseHold + F.releaseBack, CV.t);
     }
+    CV.flexG = g;
     const acc = -F.omega * F.omega * (CV.bend + CV.flexC * CV.flexAl * g) - 2 * F.zeta * F.omega * CV.bendV;
     CV.bendV += acc * h; CV.bend += CV.bendV * h;
   }
   // quadratic bow from the bottom of the grip (0) to the hosel (full); head and ferrule ride the tip
+  // round 5: plus a toe-down droop out of the swing plane (club-frame -z), FEEL.flex.droop x |bend|, with the same quadratic bow
   function applyFlex(m, bend) {
     const fl = m.flex;
     if (Math.abs(bend - fl.last) < 1e-5) return;
     fl.last = bend;
+    const dr = FEEL.flex.droop * Math.abs(bend);
     for (const d of fl.defs) {
       const a = d.attr.array, b0 = d.base;
       for (let i = 0; i < a.length; i += 3) {
         const y = b0[i + 1];
-        const s = fl.gb - y;
-        a[i] = s > 0 ? b0[i] - bend * (s / fl.Lf) * (s / fl.Lf) : b0[i];
+        const s = fl.gb - y, q = s > 0 ? (s / fl.Lf) * (s / fl.Lf) : 0;
+        a[i] = b0[i] - bend * q;
+        a[i + 2] = b0[i + 2] - dr * q;
       }
       d.attr.needsUpdate = true;
     }
-    fl.tip.position.set(-bend, -fl.Ls, 0);
-    fl.tip.rotation.z = -2 * bend / fl.Lf;
+    fl.tip.position.set(-bend, -fl.Ls, -dr);
+    fl.tip.rotation.set(2 * dr / fl.Lf, 0, -2 * bend / fl.Lf);
   }
   function setupClub(i) {
     pBeg('setupClub');
@@ -2839,6 +2899,8 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
   function resetClub() { Object.assign(CV, { a: 0, v: 0, b: 0, phase: 'address', t: 0, alpha: 0, alphaT: 0, shot: null, hit: false, bend: 0, bendV: 0, flexInit: false, tau: 0, hitSince: null }); }
   // swing path mapping (FEEL.path): finger drift as a fraction of swingLen -> path value (+ = drift right). dev = -pathMap(f)
   function pathMap(f) { const P = FEEL.path, a = Math.abs(f); return a <= P.dead ? 0 : Math.sign(f) * Math.min(P.max, (a - P.dead) / P.span); }
+  // tan of the flick's angle from straight up, from the swing's lowest point to (x, y) (round 5)
+  function flickTan(x, y, s) { return (x - s.xLow) / Math.max(1, s.yLow - y); }
   // predicted time (s, on the touch clock) the finger reaches the start line, from the samples since its lowest point
   function fingerCross(s) {
     const q = s.ls;
@@ -3009,11 +3071,11 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     CV.abPrev = ab;
     // sideways tilt: the path mapping of the finger's drift (at the line once it has crossed), low-passed so thumb wobble is not
     // copied onto the club; back to square at address
-    if (m === 'swing' && G.swing && G.swing.phase === 'down') CV.alphaT = pathMap((G.swing.x - G.swing.x0) / swingLen());
+    if (m === 'swing' && G.swing && G.swing.phase === 'down' && G.swing.yLow - G.swing.y >= FEEL.path.minRise) CV.alphaT = pathMap(flickTan(G.swing.x, G.swing.y, G.swing));
     if (CV.phase === 'address' || CV.phase === 'back') { CV.alphaT = 0; CV.alpha *= Math.exp(-dt * 6); }
     else CV.alpha += (CV.alphaT - CV.alpha) * (1 - Math.exp(-dt / FEEL.path.tiltTau));
     const P = CV.shot || G.ball, sp = CV.spec, a = CV.a * D2R, b = CV.b * D2R;
-    clubRoot.position.set(P.x, P.y, P.z);
+    clubRoot.position.set(P.x, P.y + visOff(P.x, P.z, 0), P.z);   // round 5: on the green's drawn relief
     clubRoot.rotation.set(0, (CV.shot ? CV.shot.yaw : G.aim) - CV.alpha * 0.07, 0);
     curClub.grp.position.set(-sp.rArm * Math.sin(a), -sp.rArm * Math.cos(a), 0);
     curClub.grp.rotation.set(0, 0, -(a + b));
@@ -3209,7 +3271,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
   }
   function setPerf(on) { PERF.on = on; $('perf').hidden = !on; for (const r of PERF.ring) r.t = -1; PERF.fpsN = 0; PERF.fpsT = 0; }
   const cam = { pos: new V3(0, 30, -60), look: new V3(0, 0, 100), tPos: new V3(), tLook: new V3(), k: 4, vel: new V3(), lvel: new V3(),
-    fov: 52, tFov: 52, fovV: 0, shift: 0, tShift: 0, shiftV: 0 };   // vertical fov (deg) and sideways lens shift (fraction of the width), sprung like the position
+    fov: 52, tFov: 52, fovV: 0 };   // vertical fov (deg), sprung like the position (round 5: no lens shift)
 
   function distToPin() { return Math.hypot(G.hole.pin.x - G.ball.x, G.hole.pin.z - G.ball.z); }
   function lieMul(c, lie) {
@@ -3359,7 +3421,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     G.trEnd = null; G.trAim = null;
     G.ip.x = b.x; G.ip.y = b.y; G.ip.z = b.z;          // interpolation starts from the ball at rest
     tracer.begin(); tracer.end();
-    pBeg('toast/HUD'); showToast(G.shot.label, '', 1400);
+    pBeg('toast/HUD'); showToast(G.shot.label, '', 1400, G.shot.putt ? '' : 'low');
     updateHUD(true); pEnd('toast/HUD');
     pEnd('takeShot');
   }
@@ -3433,6 +3495,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     // the lie decal normally went down at settle; after a penalty drop the ball has only just arrived
     if (!lieMesh.visible || Math.hypot(lieMesh.position.x - G.ball.x, lieMesh.position.z - G.ball.z) > 0.05) lieDecal(G.ball.x, G.ball.z);
     G.previewDirty = true;
+    hideTransients();   // round 5: the last shot's toast goes as the camera moves to the new address, so it never crosses the aim line
     G.mode = 'aim'; G.trAim = G.time;
     updateHUD(true);
   }
@@ -3674,7 +3737,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
       const dx = q.x - q.px, dz = q.z - q.pz, d = Math.hypot(dx, dz);
       if (d > 1e-6) { _ax.set(dz / d, 0, -dx / d); _q.setFromAxisAngle(_ax, d / E.BALL_R); ballMesh.quaternion.premultiply(_q); }
       q.px = q.x; q.pz = q.z;
-      ballMesh.position.set(q.x, q.y, q.z); ballMesh.scale.setScalar(E.BALL_R); G.ballScale = 1;
+      ballMesh.position.set(q.x, q.y + visOff(q.x, q.z, 0), q.z); ballMesh.scale.setScalar(E.BALL_R); G.ballScale = 1;
       return;
     }
     const cd = camera.position.distanceTo(_v.set(bd.x, bd.y, bd.z));
@@ -3693,6 +3756,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
       if (b.vy < 0) { const v = -b.vy, hg = Math.max(0, b.y - E.BALL_R - gh), tl = (Math.sqrt(v * v + 19.62 * hg) - v) / 9.81; if (tl < 0.34) capT = groundCap(bd.x + b.vx * tl, bd.z + b.vz * tl); }
     }
     if (Math.hypot(b.x - h.pin.x, b.z - h.pin.z) < 1) capT = 1;
+    if (G.mode === 'aim' || G.mode === 'swing' || G.mode === 'impact') capT = 1;   // round 5: real size at address
     if (putting) capT = 1;
     if (putting || onGreen) { G.ballCap = G.capFrom = G.capTo = capT; G.capT = FEEL.ballCapEase; }
     else {
@@ -3708,9 +3772,10 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     if (b.drop) y -= b.drop;
     // resting in the rough: drawn sunk into the lie (drawing only), eased in
     if (G.lieRough && b.state === 'rest') { G.lieK = Math.min(1, (G.lieK || 0) + (G.lastDt || 0) / FEEL.lie.sinkT); y -= FEEL.lie.sink * 2 * vr * E.smoothstep(0, 1, G.lieK); }
-    ballMesh.position.set(bd.x, y, bd.z); ballMesh.scale.setScalar(vr);
-    const hag = bd.y - E.BALL_R - gh;
-    shadowMesh.position.set(bd.x, gh + 0.012, bd.z);
+    const hag = bd.y - E.BALL_R - gh, vo = visOff(bd.x, bd.z, hag);   // round 5: the green's drawn relief
+    G.ballVis = vo;
+    ballMesh.position.set(bd.x, y + vo, bd.z); ballMesh.scale.setScalar(vr);
+    shadowMesh.position.set(bd.x, gh + 0.012 + visOff(bd.x, bd.z, 0), bd.z);
     shadowMesh.scale.setScalar(vr * 1.1 * (1 + hag * 0.02));
     matShadow.opacity = 0.34 * clamp(1 - hag / 40, 0.12, 1);
   }
@@ -3799,26 +3864,40 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     const show = (G.mode === 'aim' || G.mode === 'swing' || G.mode === 'impact' || (G.mode === 'flight' && G.shot && G.shot.putt)) && (G.lie === S.GREEN || G.lie === S.FRINGE || distToPin() < 30);
     world.dots.visible = show; if (world.grid) world.grid.visible = show;
     if (!show) return;
+    matGrid.uniforms.uRes.value.set(VW, VH);
     const arr = world.dots.geometry.attributes.position.array, D = world.dotData;
     for (let i = 0; i < D.length; i++) {
       const d = D[i];
       const ph = (t * (0.25 + d.sl * 18) + d.ph) % 1;
       const off = ph * 0.6;
-      arr[i * 3] = d.x + d.dx * off; arr[i * 3 + 1] = d.y + 0.02 - d.sl * off; arr[i * 3 + 2] = d.z + d.dz * off;
+      arr[i * 3] = d.x + d.dx * off; arr[i * 3 + 1] = d.y + 0.02 - d.slv * off; arr[i * 3 + 2] = d.z + d.dz * off;
     }
     world.dots.geometry.attributes.position.needsUpdate = true;
     world.dots.material.opacity = 0.75;
   }
 
   /* =================== camera =================== */
-  // full-swing address camera: back/up from the ball, looking `ahead` m down the line and `down` m below the ball; its own
-  // vertical fov (deg) and a sideways lens shift (fraction of the frame width; + moves the ball right of centre) so the whole
-  // club fits with the ball large enough. The camera stays on the target line, so the aim line is still vertical on screen.
-  // putt: the crouched putting camera (back/up grow with the putt length up to dMax m; look ahead/down)
-  // round 3: back 2.7, up 1.6, down 7, fov 52, no shift; putting up0 0.62, dMax 18
-  // (round 4: the putting camera stops backing off at dMax 4 m, so the ball stays >= 12 CSS px on 390x844 at any length)
-  const ADDR = { back: 3.3, up: 2.0, ahead: 30, down: 8.5, fov: 43, shift: 0.28, fov0: 52,
+  // full-swing address camera (round 5): on the target line behind the ball, so the ball is centred and the aim line runs
+  // straight up the screen; no lens shift. Per club: back/up from the ball (m), the look point `ahead` m down the line and
+  // `down` m below the ball, vertical fov (deg). Chosen so the ball sits 62% down the screen at real size (>= 8 CSS px on
+  // 390x844), the whole club is inside the frame at address with >= 5% margin and clear of the HUD cards and bottom buttons,
+  // and the horizon stays under the card band (toasts and popups sit in the sky). Shorter clubs sit closer
+  // putt: the crouched putting camera (back/up grow with the putt length up to dMax m; look ahead/down), as round 4
+  // round 4: back 3.3, up 2.0, down 8.5, fov 43, shift 0.28 (one camera for every club)
+  // round 5: per club address framing (m behind the ball, m above it, look-at depth below the ball 30 m ahead, vertical FOV).
+  // The camera sits on the target line, 17.5 deg above the ball, so the ball is centred at 62% of the height, the horizon
+  // falls at 37% (below the card band under the HUD cards, even with the iPhone's top inset), and the whole club at address
+  // keeps >= 5.2% margin; shorter clubs sit closer, so their ball shows bigger (DR 8.0 px .. LW 13.0 px at 390x844).
+  const ADDR = { ahead: 30, fov0: 52,
+    club: {
+      DR: { back: 3.472, up: 1.095, down: 4.189, fov: 64 }, '3W': { back: 3.195, up: 1.007, down: 4.233, fov: 64 },
+      '4H': { back: 2.880, up: 0.908, down: 4.283, fov: 64 }, '5I': { back: 2.613, up: 0.824, down: 4.325, fov: 64 },
+      '6I': { back: 2.556, up: 0.806, down: 4.334, fov: 64 }, '7I': { back: 2.499, up: 0.788, down: 4.343, fov: 64 },
+      '8I': { back: 2.432, up: 0.767, down: 4.353, fov: 64 }, '9I': { back: 2.375, up: 0.749, down: 4.362, fov: 64 },
+      PW: { back: 2.318, up: 0.731, down: 4.371, fov: 64 }, GW: { back: 2.270, up: 0.716, down: 4.379, fov: 64 },
+      SW: { back: 2.203, up: 0.695, down: 4.389, fov: 64 }, LW: { back: 2.146, up: 0.677, down: 4.398, fov: 64 } },
     putt: { back0: 1.9, backK: 0.2, up0: 0.85, upK: 0.075, dMax: 4, look0: 1.2, lookK: 0.75, lookMax: 10, lookDown: 0.2 } };
+  function addrFor(ci) { return ADDR.club[E.CLUBS[ci].id] || ADDR.club.DR; }
   // the putting camera for a putt of d m (above the ball, behind it along the line): address and the roll share it
   function puttCam(d) { const P = ADDR.putt, k = Math.min(d, P.dMax); return { back: P.back0 + k * P.backK, up: P.up0 + k * P.upK }; }
   function addressCam() {
@@ -3836,7 +3915,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
       cam.tLook.set(cx, h.height(mx, mz), cz);
       cam.k = 5; return;
     }
-    const by = b.y;
+    const by = b.y + visOff(b.x, b.z, 0);   // round 5: the drawn ball on the green's relief
     if (isPutter()) {
       // crouched behind the ball, reading the line
       const d = distToPin(), P = ADDR.putt, pc = puttCam(d);
@@ -3844,9 +3923,11 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
       const la = Math.min(d, P.lookMax) * P.lookK + P.look0;
       cam.tLook.set(b.x + dx * la, by - P.lookDown, b.z + dz * la);
     } else {
-      cam.tPos.set(b.x - dx * ADDR.back, by + ADDR.up, b.z - dz * ADDR.back);
-      cam.tLook.set(b.x + dx * ADDR.ahead, by - ADDR.down, b.z + dz * ADDR.ahead);
-      cam.tFov = ADDR.fov; cam.tShift = ADDR.shift;
+      // a club change moves the camera on its spring (no snap)
+      const A = addrFor(G.club);
+      cam.tPos.set(b.x - dx * A.back, by + A.up, b.z - dz * A.back);
+      cam.tLook.set(b.x + dx * ADDR.ahead, by - A.down, b.z + dz * ADDR.ahead);
+      cam.tFov = A.fov;
     }
     cam.k = 5;
     const O = G.camOrbit;
@@ -3866,8 +3947,9 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
       const dx = Math.sin(G.aim), dz = Math.cos(G.aim);
       // the putting camera stays where it was at address (round 4: same height, so the stroke doesn't move it)
       const pc = puttCam(Math.hypot(G.hole.pin.x - s.sx, G.hole.pin.z - s.sz));
-      cam.tPos.set(s.sx - dx * pc.back, G.hole.height(s.sx, s.sz) + E.BALL_R + pc.up, s.sz - dz * pc.back);
-      cam.tLook.set(bd.x, bd.y, bd.z); cam.k = 3; return;
+      // round 5: from the drawn surface, looking at the drawn ball
+      cam.tPos.set(s.sx - dx * pc.back, hVis(s.sx, s.sz) + E.BALL_R + pc.up, s.sz - dz * pc.back);
+      cam.tLook.set(bd.x, bd.y + (G.ballVis || 0), bd.z); cam.k = 3; return;
     }
     let dx = bd.x - s.sx, dz = bd.z - s.sz; const l = Math.hypot(dx, dz);
     if (l < 5) { dx = Math.sin(G.aim); dz = Math.cos(G.aim); } else { dx /= l; dz /= l; }
@@ -3889,11 +3971,30 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     r = springAxis(p.y, vel.y, T.y, w, dt); p.y = r[0]; vel.y = r[1];
     r = springAxis(p.z, vel.z, T.z, w, dt); p.z = r[0]; vel.z = r[1];
   }
-  function camHardSet() { cam.pos.copy(cam.tPos); cam.look.copy(cam.tLook); cam.vel.set(0, 0, 0); cam.lvel.set(0, 0, 0); cam.fov = cam.tFov; cam.fovV = 0; cam.shift = cam.tShift; cam.shiftV = 0; }
+  // round 5: while a full shot is in the air the camera tilts up just enough that the ball never climbs behind the HUD cards
+  // (the follow spring lags a fast climb), and eases back once it isn't needed. A rotation about the camera's own x axis moves
+  // every point's vertical view angle by the same amount, so the needed tilt is exact
+  const _ft = new THREE.Vector3(); let hudTopKey = '', hudTopY = 0;
+  function hudTopBottom() {
+    const key = VW + 'x' + VH + ($('hudTop').hidden ? 'h' : 'v');
+    if (key !== hudTopKey) { hudTopKey = key; hudTopY = 0; document.querySelectorAll('#hudTop .card').forEach((e) => { const r = e.getBoundingClientRect(); if (r.height > 0) hudTopY = Math.max(hudTopY, r.bottom); }); }
+    return hudTopY;
+  }
+  function flightTilt(dt) {
+    if (G.paused) { if ((G.camTilt || 0) > 1e-5) camera.rotateX(G.camTilt); return; }
+    let need = 0;
+    if (G.mode === 'flight' && G.shot && !G.shot.putt) {
+      camera.updateMatrixWorld(); _ft.set(G.bd.x, G.bd.y + (G.ballVis || 0), G.bd.z).project(camera);
+      const top = 1 - 2 * (hudTopBottom() + FEEL.cam.flightTopPad) / VH, t = Math.tan(camera.fov * D2R / 2);
+      if (_ft.z < 1 && _ft.y > top) need = Math.atan(_ft.y * t) - Math.atan(top * t);
+    }
+    const cur = G.camTilt || 0;
+    G.camTilt = need >= cur ? need : need + (cur - need) * Math.exp(-dt * FEEL.cam.tiltEase);
+    if (G.camTilt > 1e-5) camera.rotateX(G.camTilt);
+  }
+  function camHardSet() { cam.pos.copy(cam.tPos); cam.look.copy(cam.tLook); cam.vel.set(0, 0, 0); cam.lvel.set(0, 0, 0); cam.fov = cam.tFov; cam.fovV = 0; }
   function applyLens() {
     if (Math.abs(camera.fov - cam.fov) > 1e-6) { camera.fov = cam.fov; camera.updateProjectionMatrix(); }
-    if (Math.abs(cam.shift) > 1e-5) camera.setViewOffset(VW, VH, -cam.shift * VW, 0, VW, VH);
-    else if (camera.view && camera.view.enabled) camera.clearViewOffset();
   }
   function updateCamera(dt) {
     if (G.freeCam) { camera.position.copy(G.freeCam.pos); camera.lookAt(G.freeCam.look); return; }
@@ -3905,9 +4006,9 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     }
     camera.position.copy(cam.pos);
     camera.lookAt(cam.look);
-    // fov and lens shift ease with the same spring; the shift is an off-axis frustum (verticals stay vertical)
-    let r = springAxis(cam.fov, cam.fovV, cam.tFov, w, dt); cam.fov = r[0]; cam.fovV = r[1];
-    r = springAxis(cam.shift, cam.shiftV, cam.tShift, w, dt); cam.shift = r[0]; cam.shiftV = r[1];
+    flightTilt(dt);
+    // fov eases with the same spring
+    const r = springAxis(cam.fov, cam.fovV, cam.tFov, w, dt); cam.fov = r[0]; cam.fovV = r[1];
     applyLens();
   }
 
@@ -3953,7 +4054,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     // ambient birds
     G.birdT -= dt; if (G.birdT < 0) { G.birdT = 5 + Math.random() * 9; if (G.mode !== 'menu') Snd.play('bird'); }
 
-    cam.tFov = ADDR.fov0; cam.tShift = 0;   // the address and intro cameras set their own lens below
+    cam.tFov = ADDR.fov0;   // the address and intro cameras set their own fov below
     switch (G.mode) {
       case 'menu': {
         G.menuAng += dt * 0.045;
@@ -3969,10 +4070,10 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
         const b = G.ball, pin = h.pin;
         const dx = Math.sin(G.aim), dz = Math.cos(G.aim);
         const startP = _v.set(pin.x + (pin.x - b.x) / Math.max(1, h.len) * 22, pin.y + 16, pin.z + (pin.z - b.z) / Math.max(1, h.len) * 22);
-        const endP = _w.set(b.x - dx * ADDR.back, b.y + ADDR.up, b.z - dz * ADDR.back);
+        const A = addrFor(G.club), endP = _w.set(b.x - dx * A.back, b.y + A.up, b.z - dz * A.back);
         cam.tPos.copy(startP).lerp(endP, e); cam.tPos.y += Math.sin(Math.PI * e) * (25 + h.len * 0.08);
-        cam.tLook.set(lerp(pin.x, b.x + dx * ADDR.ahead, e), lerp(pin.y, b.y - ADDR.down, e), lerp(pin.z, b.z + dz * ADDR.ahead, e));
-        cam.tFov = lerp(ADDR.fov0, ADDR.fov, e); cam.tShift = ADDR.shift * e;
+        cam.tLook.set(lerp(pin.x, b.x + dx * ADDR.ahead, e), lerp(pin.y, b.y - A.down, e), lerp(pin.z, b.z + dz * ADDR.ahead, e));
+        cam.tFov = lerp(ADDR.fov0, A.fov, e);
         if (G.timer < 0.05) camHardSet();
         cam.k = 12;
         if (t >= 1) { G.mode = 'aim'; updateHUD(true); }
@@ -4037,15 +4138,23 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     pBeg('updateParticles'); updateParticles(sdt); pEnd('updateParticles');
     updateDots(G.time);
     if (G.mode === 'aim' || G.mode === 'swing' || G.mode === 'flight') updateHUD(false);
+    updatePowerCard();
   }
 
   /* =================== swing input =================== */
   const touch = $('touch');
-  function swingLen() { return clamp(VH * 0.3, 140, 300); }
+  function swingLen() { const Z = FEEL.swingZone; return clamp(VH * Z.len, Z.lenMin, Z.lenMax); }
   // finger trail for the swing overlay, kept in fixed arrays so moving the finger allocates nothing
   const TRAIL = { x: new Float32Array(60), y: new Float32Array(60), t: new Float64Array(60), n: 0, h: 0 };
   function trailPush(x, y, t) { const i = TRAIL.h; TRAIL.x[i] = x; TRAIL.y[i] = y; TRAIL.t[i] = t; TRAIL.h = (i + 1) % 60; if (TRAIL.n < 60) TRAIL.n++; }
-  function swingZoneTop() { return VH * 0.36; }
+  // round 5: a swing starts from a press below the ball (its screen y + below x height) and above the bottom buttons; presses
+  // above it aim. When the ball sits low (putts), the zone keeps at least minH x height above the buttons
+  function swingZone() {
+    const Z = FEEL.swingZone, by = ballScreen()[1];
+    let bot = VH; for (const id of ['btnPause', 'clubPrev', 'clubNext', 'btnMap']) { const r = $(id).getBoundingClientRect(); if (r.height > 0) bot = Math.min(bot, r.top); }
+    const cb = document.querySelector('#hudBot .clubball').getBoundingClientRect(); if (cb.height > 0) bot = Math.min(bot, cb.top);
+    return { top: Math.min(by + Z.below * VH, bot - Z.minH * VH), bottom: bot, ballY: by };
+  }
 
   function onDown(e) {
     Snd.init();
@@ -4059,10 +4168,11 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     const x = e.clientX, y = e.clientY;
     try { touch.setPointerCapture(e.pointerId); } catch (er) { /* ignore */ }
     if (G.map) { mapAim(x, y); return; }
-    if (y > swingZoneTop()) {
-      G.swing = { id: e.pointerId, x0: x, y0: y, x, y, maxDy: 0, phase: 'back', power: 0, t0: performance.now(), tBottom: 0, tLift: performance.now(), ix: x };
+    const zone = swingZone();
+    if (y >= zone.top && y <= zone.bottom) {
+      G.swing = { id: e.pointerId, x0: x, y0: y, x, y, xLow: x, yLow: y, maxDy: 0, phase: 'back', power: 0, t0: performance.now(), tBottom: 0, tLift: performance.now(), ix: x };
       TRAIL.n = 0; trailPush(x, y, performance.now());
-      G.mode = 'swing';
+      G.mode = 'swing'; updateHUD(true);
     } else {
       G.aimDrag = { id: e.pointerId, x0: x, a0: G.aim };
     }
@@ -4089,14 +4199,14 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     const L = swingLen();
     const dy = s.y - s.y0;
     if (s.phase === 'back') {
-      if (dy > s.maxDy) { s.maxDy = dy; s.tBottom = now; }
+      if (dy > s.maxDy) { s.maxDy = dy; s.tBottom = now; s.xLow = s.x; s.yLow = s.y; }
       // a pause at the bottom is not part of the downswing. A still finger may send no events at all,
       // so the first sample that has risen is credited at most one frame (17 ms) of travel
       if (s.maxDy - dy <= FEEL.tempoLift) { s.tLift = now; s.lifted = false; }
       else if (!s.lifted) { s.lifted = true; s.tLift = Math.max(s.tLift, now - 17); }
       s.power = clamp(s.maxDy / L, 0, 1.12);
       if (s.maxDy > 10 && dy < s.maxDy - Math.max(14, s.maxDy * 0.12)) { s.phase = 'down'; s.tDown = s.tLift; }
-    } else if (dy > s.maxDy) { s.phase = 'back'; s.maxDy = dy; s.tBottom = now; s.tLift = now; s.lifted = false; s.power = clamp(s.maxDy / L, 0, 1.12); }
+    } else if (dy > s.maxDy) { s.phase = 'back'; s.maxDy = dy; s.tBottom = now; s.tLift = now; s.lifted = false; s.power = clamp(s.maxDy / L, 0, 1.12); s.xLow = s.x; s.yLow = s.y; }
     // club reversal (how the club moves only; the shot's threshold above is unchanged): the first sample revPx above the
     // lowest point starts the club down, and finger progress u (0 at the lowest point, 1 at the start line) drives it
     const rise = s.maxDy - dy;
@@ -4138,9 +4248,12 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     const s = G.swing; if (!s) return;
     const L = swingLen();
     if (s.power < 0.03) { cancelSwing(); return; }
-    // finger drift = club path. Right-handed: drift right is in-to-out (push-draw), drift left is out-to-in (pull-fade/slice).
-    // FEEL.path: a dead zone, then a soft slope (f = drift / swingLen)
-    const f = (s.ix - s.x0) / L, swipe = pathMap(f);
+    // club path from the flick's angle (round 5): the upstroke from the lowest point to where it crosses the start line, from
+    // straight up, right +. Right-handed: right is in-to-out (push-draw), left is out-to-in (pull-fade/slice). f = tan(phi) goes
+    // through FEEL.path (a dead zone, then a soft slope). The backswing's own angle (press -> lowest point) is kept for display only
+    const f = flickTan(s.ix, s.y0, s), swipe = pathMap(f);
+    G.phi = Math.atan(f) * 180 / Math.PI;
+    G.beta = Math.atan2(s.xLow - s.x0, Math.max(1e-3, s.yLow - s.y0)) * 180 / Math.PI;
     CV.alphaT = swipe;
     const dev = -swipe;
     const td = (now - s.tDown) / 1000;
@@ -4240,85 +4353,52 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     fx.strokeStyle = css(PALETTE.green); fx.lineWidth = 2 * k; fx.beginPath(); fx.moveTo(x, y); fx.lineTo(x, y - h); fx.stroke();
     fx.restore();
   }
+  // the drawn ball's screen point (CSS px)
+  const _bs = new THREE.Vector3();
+  function ballScreen() { camera.updateMatrixWorld(); _bs.copy(ballMesh.position).project(camera); return [(_bs.x * 0.5 + 0.5) * VW, (0.5 - _bs.y * 0.5) * VH]; }
+  // direction fan over the ball (round 5): the STRAIGHT window as a faint annular sector opening up the screen, a brighter
+  // band for the PURE window and a thin centre line. Full swings only; fades in from the press, out from contact
+  function drawFan(dt, L) {
+    const P = FEEL.path, on = !isPutter() && (G.mode === 'swing' || G.mode === 'impact');
+    G.fanA = on ? Math.min(1, (G.fanA || 0) + dt / P.fanIn) : Math.max(0, (G.fanA || 0) - dt / P.fanOut);
+    if (G.fanA <= 0.001) return;
+    const [cx, cy] = ballScreen(), r0 = P.fanR0 * L, r1 = P.fanR1 * L, up = -Math.PI / 2;
+    const th = Math.atan(P.dead + 0.12 * P.span), tp = Math.atan(P.pure), a = G.fanA, PL = PALETTE;
+    const sector = (t0, t1) => { fx.beginPath(); fx.arc(cx, cy, r1, up + t0, up + t1); fx.arc(cx, cy, r0, up + t1, up + t0, true); fx.closePath(); fx.fill(); };
+    fx.save();
+    fx.fillStyle = rgba(PL.cream, P.fanA * a); sector(-th, -tp); sector(tp, th);
+    fx.fillStyle = rgba(PL.cream, P.fanPureA * a); sector(-tp, tp);
+    fx.strokeStyle = rgba(PL.cream, P.fanLineA * a); fx.lineWidth = P.fanLineW;
+    fx.beginPath(); fx.moveTo(cx, cy - r0); fx.lineTo(cx, cy - r1); fx.stroke();
+    fx.restore();
+  }
   function drawFX(dt) {
     fx.clearRect(0, 0, VW, VH);
     if (G.paused || !G.hole) return;
     drawPinMarker();
     const L = swingLen();
+    drawFan(dt, L);
     const PL = PALETTE, cream = css(PL.cream), green = css(PL.green), yellow = css(PL.yellow), warn = css(PL.warn);
     if (G.mode === 'aim' && !G.map && (save.shots || 0) < 12) {
+      // first-shots hint (round 5): a small cream chevron and the words, centred in the swing zone below the ball
+      const z = swingZone(), cx = VW * 0.5, cy = (z.top + z.bottom) / 2, H = FEEL.hint;
       fx.save();
-      fx.font = '700 11px Archivo, system-ui, sans-serif';
-      // with the address lens shift (ball right of centre, club to its left) the hint sits centred above every club's grip end;
-      // without it, on the right as before
-      const hw = fx.measureText('PULL DOWN · FLICK UP').width / 2, sh = ADDR.shift > 0.05;
-      const cx = sh ? VW * 0.5 : Math.min(VW - Math.max(56, VW * 0.12), VW - hw - 12), cy = VH * (sh ? 0.44 : 0.58);
       fx.globalAlpha = 0.6 + 0.12 * Math.sin(G.time * 2.5);
       fx.shadowColor = rgba(PL.green, 0.7); fx.shadowBlur = 4;
-      fx.strokeStyle = cream; fx.lineWidth = 2.5; fx.lineCap = 'round';
-      const bob = (G.time * 0.8) % 1;
-      fx.beginPath(); fx.moveTo(cx, cy - 26); fx.lineTo(cx, cy + 26); fx.stroke();
-      fx.beginPath(); fx.moveTo(cx - 7, cy + 19); fx.lineTo(cx, cy + 26); fx.lineTo(cx + 7, cy + 19); fx.stroke();
-      fx.beginPath(); fx.moveTo(cx - 7, cy - 19); fx.lineTo(cx, cy - 26); fx.lineTo(cx + 7, cy - 19); fx.stroke();
-      fx.globalAlpha = 0.9;
-      fx.fillStyle = cream;
-      fx.beginPath(); fx.arc(cx, cy - 26 + (bob < 0.6 ? bob / 0.6 * 52 : 52 - (bob - 0.6) / 0.4 * 52), 5, 0, Math.PI * 2); fx.fill();
+      fx.strokeStyle = cream; fx.lineWidth = 2.5; fx.lineCap = 'round'; fx.lineJoin = 'round';
+      const bob = H.bob * Math.sin(G.time * 3);
+      fx.beginPath(); fx.moveTo(cx - H.chev, cy - 8 + bob); fx.lineTo(cx, cy - 8 + H.chev * 0.7 + bob); fx.lineTo(cx + H.chev, cy - 8 + bob); fx.stroke();
+      fx.globalAlpha = 0.9; fx.fillStyle = cream;
       fx.font = '700 11px Archivo, system-ui, sans-serif'; fx.textAlign = 'center';
-      fx.fillText('PULL DOWN · FLICK UP', cx, cy + 50);
+      fx.fillText('PULL DOWN · FLICK UP', cx, cy + H.chev + 10);
       fx.restore();
     }
     if (G.mode === 'swing' && G.swing) {
-      const s = G.swing, x0 = s.x0, y0 = s.y0, M = FEEL.meter;
+      // round 5: no meter, guide track, trail or finger dot over the play area (power shows in the lie card). The start line stays
+      const s = G.swing;
       fx.save();
-      // guide line: solid cream at 40%
-      fx.strokeStyle = rgba(PL.cream, 0.4); fx.lineWidth = 2;
-      fx.beginPath(); fx.moveTo(x0, y0 - 40); fx.lineTo(x0, y0 + L * 1.12); fx.stroke();
-      // start line
       fx.strokeStyle = cream; fx.lineWidth = 3; fx.lineCap = 'round';
-      fx.beginPath(); fx.moveTo(x0 - 26, y0); fx.lineTo(x0 + 26, y0); fx.stroke();
-      // meter: rounded cream track with a green outline; fill green, yellow over the last 10% before 100%, warn past it
-      const w = M.w, mx = x0 + (x0 > VW - 110 ? -(M.gap + w) : M.gap), r = w / 2, Lm = L * 1.12;
-      fx.fillStyle = rgba(PL.cream, 0.85); roundRect(mx, y0, w, Lm, r); fx.fill();
-      fx.save(); roundRect(mx, y0, w, Lm, r); fx.clip();
-      fx.fillStyle = rgba(PL.warn, 0.3); fx.fillRect(mx, y0 + L, w, L * 0.12);            // overswing zone
-      const pw = Math.min(s.power, 1.12), y1 = y0 + Math.min(pw, M.yellowFrom) * L;
-      fx.fillStyle = green; fx.fillRect(mx, y0, w, y1 - y0);
-      if (pw > M.yellowFrom) { fx.fillStyle = yellow; fx.fillRect(mx, y1, w, (Math.min(pw, 1) - M.yellowFrom) * L); }
-      if (pw > 1) { fx.fillStyle = warn; fx.fillRect(mx, y0 + L, w, (pw - 1) * L); }
-      fx.restore();
-      fx.strokeStyle = green; fx.lineWidth = 2; roundRect(mx, y0, w, Lm, r); fx.stroke();
-      // ticks at 25 / 50 / 75%, a yellow notch at 100%
-      for (let k = 1; k <= 3; k++) { fx.fillStyle = pw >= k / 4 ? cream : green; fx.fillRect(mx + 4, y0 + L * k / 4 - 1, w - 8, 2); }
-      fx.fillStyle = yellow; fx.strokeStyle = green; fx.lineWidth = 1.5;
-      fx.beginPath(); fx.moveTo(mx - 9, y0 + L - 6); fx.lineTo(mx - 1, y0 + L); fx.lineTo(mx - 9, y0 + L + 6); fx.closePath(); fx.fill(); fx.stroke();
-      fx.beginPath(); fx.moveTo(mx + w + 9, y0 + L - 6); fx.lineTo(mx + w + 1, y0 + L); fx.lineTo(mx + w + 9, y0 + L + 6); fx.closePath(); fx.fill(); fx.stroke();
-      // label: percentage in the brand face (cream, dark shadow), carry beneath in Archivo
-      const club = E.CLUBS[G.club];
-      let label;
-      if (club.putter) label = fmtShort(pw * E.puttMax(distToPin()));
-      else label = fmtD(E.carryFor(club, pw) * lieMul(club, G.lie) * (1 + 0.022 * save.upg.power));
-      fx.textAlign = mx > x0 ? 'left' : 'right';
-      const lx = mx > x0 ? mx + w + 12 : mx - 12;
-      fx.shadowColor = rgba(PL.green, 0.9); fx.shadowBlur = 6; fx.shadowOffsetY = 1;
-      fx.font = 'italic 900 ' + M.pctPx + 'px Fraunces, Georgia, serif'; fx.fillStyle = cream;
-      fx.fillText(Math.round(pw * 100) + '%', lx, y0 + pw * L + 8);
-      fx.font = '700 13px Archivo, system-ui, sans-serif';
-      fx.fillText(label, lx, y0 + pw * L + 26);
-      fx.shadowColor = 'transparent'; fx.shadowBlur = 0; fx.shadowOffsetY = 0;
-      // trail: yellow while fresh, cream as it fades
-      const now = performance.now();
-      fx.lineCap = 'round'; fx.lineJoin = 'round';
-      for (let i = 1; i < TRAIL.n; i++) {
-        const ia = (TRAIL.h - TRAIL.n + i - 1 + 120) % 60, ib = (ia + 1) % 60;
-        const age = (now - TRAIL.t[ib]) / 600; if (age > 1) continue;
-        fx.strokeStyle = trailCol[Math.min(15, (age * 16) | 0)];
-        fx.globalAlpha = (1 - age) * 0.9; fx.lineWidth = 6 * (1 - age) + 2;
-        fx.beginPath(); fx.moveTo(TRAIL.x[ia], TRAIL.y[ia]); fx.lineTo(TRAIL.x[ib], TRAIL.y[ib]); fx.stroke();
-      }
-      fx.globalAlpha = 1;
-      // finger dot: cream with a green ring
-      fx.fillStyle = cream; fx.strokeStyle = green; fx.lineWidth = 3;
-      fx.beginPath(); fx.arc(s.x, s.y, 9, 0, Math.PI * 2); fx.fill(); fx.stroke();
+      fx.beginPath(); fx.moveTo(s.x0 - 26, s.y0); fx.lineTo(s.x0 + 26, s.y0); fx.stroke();
       fx.restore();
     }
     if (G.flash) {
@@ -4360,6 +4440,17 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     [S.GREEN]: 'M4 17c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z M12 16V4 M12 4.5h6l-2 2 2 2h-6',
   };
   const CLUB_SHORT = { DR: 'D', PT: 'P' };
+  // round 5: power in the lie card while swinging (every frame; DOM writes only when a value changes); back to the lie at contact
+  function updatePowerCard() {
+    const on = !!(G.round && G.hole) && ((G.mode === 'swing' && G.swing) || (G.mode === 'impact' && G.pendingShot));
+    hudSet('lieChip', 'class', 'card info' + (on ? ' power' : ''));
+    hudSet('liePw', 'hidden', !on);
+    if (!on) return;
+    const pw = Math.min(G.swing ? G.swing.power : G.pendingShot.power, 1.12), club = E.CLUBS[G.club];
+    hudSet('pwPct', 'text', Math.round(pw * 100) + '%');
+    hudSet('pwPct', 'class', 'brandtxt num' + (pw > 1 ? ' over' : ''));
+    hudSet('pwCarry', 'text', club.putter ? fmtShort(pw * E.puttMax(distToPin())) : fmtD(E.carryFor(club, pw) * lieMul(club, G.lie) * (1 + 0.022 * save.upg.power)));
+  }
   function updateHUD(force) {
     if (!G.hole || !G.round) return;
     const now = performance.now();
@@ -4409,13 +4500,22 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     hudSet('btnMap', 'class', 'rbtn map' + (G.map ? ' on' : ''));
     hudSet('btnMap', 'aria-pressed', G.map ? 'true' : 'false');
     hudSet('maphint', 'hidden', !(G.map && G.mode === 'aim'));
+    if (G.map && G.mode === 'aim') hideTransients('maphint');   // one card at a time (round 5)
     const interactive = G.mode === 'aim';
-    hudSet('hudBot', 'opacity', interactive || G.mode === 'swing' ? 1 : 0.45);
+    hudSet('hudBot', 'opacity', interactive ? 1 : G.mode === 'swing' ? FEEL.hudSwingDim : 0.45);
     pEnd('updateHUD');
   }
 
   let toastTimer = 0;
-  function showToast(q, d, ms) {
+  // one transient card at a time (round 5): a new toast, score popup or map hint replaces whatever is showing
+  function hideTransients(keep) {
+    if (keep !== 'toast') { $('toast').classList.remove('show'); clearTimeout(toastTimer); }
+    if (keep !== 'banner') { $('banner').classList.remove('show'); clearTimeout(bannerTimer); }
+    if (keep !== 'maphint' && !$('maphint').hidden) { $('maphint').hidden = true; hudLast['maphint.hidden'] = true; }
+  }
+  // slot 'low' (round 5): the contact toast sits above the bottom buttons, under the ball's start, because the ball climbs
+  // through the band under the HUD cards in flight; every other toast uses that band
+  function showToast(q, d, ms, slot) {
     // shot label in the brand face; tags after it smaller (overswing in warn); PURE underlined in yellow; penalties in warn
     const el0 = $('tQ'), parts = (q || '').split(' · '), penalty = /^(WATER|OUT OF BOUNDS)$/.test(parts[0]);
     el0.textContent = '';
@@ -4428,6 +4528,8 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     $('tD').hidden = !d;
     const el = $('toast');
     if (!q && !d) { el.classList.remove('show'); return; }
+    hideTransients('toast');
+    el.classList.toggle('low', slot === 'low');
     el.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.classList.remove('show'), ms || 1600);
@@ -4439,7 +4541,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     const lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = w; q.appendChild(lab);
     q.className = 'q brandtxt' + (kind ? ' ' + kind : '');
     $('bS').textContent = s || '';
-    const el = $('banner'); el.classList.add('show');
+    const el = $('banner'); hideTransients('banner'); el.classList.add('show');
     clearTimeout(bannerTimer);
     bannerTimer = setTimeout(() => el.classList.remove('show'), ms || 2000);
   }
@@ -4698,7 +4800,9 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     state: () => ({ holeOut: G.sinkS ? { t: G.sinkS.t, x: G.sinkS.x, y: G.sinkS.y, z: G.sinkS.z, still: G.sinkS.still, hits: G.sinkS.hits.slice(), rattles: G.sinkS.rattles } : null, timeScale: G.timeScale, tau: CV.tau, Test: CV.Test, Traw: CV.Traw, alpha: CV.alpha, alphaT: CV.alphaT, bend: CV.bend, flagScale: world.flag ? world.flag.scale.x : null, pinMarker: G.pinMarker, ballScale: G.ballScale, mode: G.mode, phase: CV.phase, a: CV.a, b: CV.b, v: CV.v,
       rev: !!(G.swing && G.swing.rev), u: G.swing ? G.swing.u : null, tRev: G.swing ? G.swing.tRev : null, whoosh: Snd.whoosh(),
       touchDt: G.swing ? G.swing.touchDt : null, ipAlpha: G.ipAlpha, ballDrawn: { x: G.bd.x, y: G.bd.y, z: G.bd.z },
-      camSpring: { omega: cam.k * FEEL.cam.kToOmega, vel: cam.vel.toArray(), lookVel: cam.lvel.toArray(), orbit: G.camOrbit ? G.camOrbit.t : null } }), Snd, greenTint, camera, ADDR, PALETTE, clubModels, snap: camHardSet, lieDecal, lieMesh, showToast, showBanner, showCard, finishRound, world, nextShot, pathMap, ballMesh };
+      phi: G.phi, beta: G.beta, ballVis: G.ballVis || 0, fanA: G.fanA || 0, flexG: CV.flexG, flexTau: CV.flexTau, addr: G.club != null ? addrFor(G.club) : null,
+      camSpring: { omega: cam.k * FEEL.cam.kToOmega, vel: cam.vel.toArray(), lookVel: cam.lvel.toArray(), orbit: G.camOrbit ? G.camOrbit.t : null } }), Snd, greenTint, camera, ADDR, PALETTE, clubModels, snap: camHardSet, lieDecal, lieMesh, showToast, showBanner, showCard, finishRound, world, nextShot, pathMap, ballMesh,
+    addrFor, swingZone, swingLen, hVis, visOff, flickTan, ballScreen };
 })();
 
 </script>

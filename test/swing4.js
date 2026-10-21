@@ -33,8 +33,20 @@ const OUT = path.dirname(OUTF);
     G.manual = true;
     sim.base = performance.now(); sim.on = true; sim.t = sim.base;
     const FD = 1 / HZ;
-    const X = 195, Y0 = 560, L = Math.min(300, Math.max(140, innerHeight * 0.3));
-    const R = { k: 0 };
+    const X = 195, L = T.swingLen ? T.swingLen() : Math.min(300, Math.max(140, innerHeight * 0.3));   // round 5: the game's own swingLen
+    let Y0 = 560;   // round 5: the press must land in the swing zone below the ball (set per run once the ball is placed)
+    const R = { k: 0, frame0: 0, inLoop: false, j: 0, ts: 1, sub: null, hitT: null };
+    // round 5: the shaft's 240 Hz substeps (as swing2.js) for the flip timing: CV.bend per substep and the contact time
+    let bendV = CV.bend, hitV = CV.hit;
+    Object.defineProperty(CV, 'hit', { configurable: true, get: () => hitV, set: (v) => {
+      hitV = v;
+      if (v === false) { R.inLoop = true; R.j = 0; R.ts = G.timeScale; }
+      else if (R.inLoop && R.hitT == null) R.hitT = R.frame0 + Math.min((R.j + 1) / 240, FD * R.ts) / R.ts;
+    } });
+    Object.defineProperty(CV, 'bend', { configurable: true, get: () => bendV, set: (v) => {
+      bendV = v;
+      if (R.inLoop && R.sub) { R.j++; const t = R.frame0 + Math.min(R.j / 240, FD * R.ts) / R.ts; R.sub.push([t, v]); }
+    } });
     const ev = (type, x, y, tSec) => {
       sim.t = sim.base + tSec * 1000;
       (type === 'pointerdown' ? document.getElementById('touch') : window).dispatchEvent(new PointerEvent(type, { pointerId: 7, clientX: x, clientY: y, button: 0, bubbles: true, isPrimary: true, pointerType: 'touch' }));
@@ -42,9 +54,9 @@ const OUT = path.dirname(OUTF);
     const frames = [];
     const frame = () => {
       R.k++; const Tk = R.k * FD;
-      sim.t = sim.base + Tk * 1000;
+      sim.t = sim.base + Tk * 1000; R.frame0 = Tk - FD; R.inLoop = false;
       const b = G.ball, bx = b.x, bz = b.z;
-      T.tick(FD, false);
+      T.tick(FD, false); R.inLoop = false;
       const st = T.state();
       const row = { t: Tk, mode: G.mode, phase: CV.phase, a: CV.a, b: CV.b, ts: G.timeScale, moved: bx !== b.x || bz !== b.z, bd: [G.bd.x, G.bd.y, G.bd.z], bp: [b.x, b.y, b.z], tau: st.tau, Test: st.Test, alpha: CV.alpha };
       frames.push(row); return row;
@@ -63,7 +75,7 @@ const OUT = path.dirname(OUTF);
       const yAt = (t) => t <= t0 ? Y0 : t <= tP ? Y0 + D * (1 - Math.pow(1 - (t - t0) / 0.45, 2)) : t <= tH ? Y0 + D : Y0 + D - D * Math.pow((t - tH) / Tup, 2);
       const xAt = (t) => X + (t <= tH ? 0 : (o.drift || 0) * Math.min(1.3, (t - tH) / Tup));
       const tCross = tH + Tup;
-      frames.length = 0;
+      frames.length = 0; R.sub = []; R.hitT = null;
       const out = { tCross, tRev: null, tFire: null, shot: null, tBall: null, fBall: null };
       let down = false, k = 0, mx = 0;
       while (k < 900) {
@@ -82,6 +94,10 @@ const OUT = path.dirname(OUTF);
         if (out.tBall != null && r.t > out.tBall + 0.8) break;
       }
       out.frames = frames.slice();
+      // the shaft's + to - crossing nearest contact (ms from contact), and the largest bend
+      const sub = R.sub, tc = R.hitT; R.sub = null; out.flipMs = null; out.peakBendMm = 0;
+      for (let i = 1; i < sub.length; i++) { if (Math.abs(sub[i][1]) > Math.abs(out.peakBendMm) / 1000) out.peakBendMm = sub[i][1] * 1000;
+        if (tc != null && sub[i - 1][1] > 0 && sub[i][1] <= 0) { const tz = sub[i - 1][0] + (sub[i][0] - sub[i - 1][0]) * sub[i - 1][1] / (sub[i - 1][1] - sub[i][1]); const d = (tz - tc) * 1000; if (out.flipMs == null || Math.abs(d) < Math.abs(out.flipMs)) out.flipMs = d; } }
       return out;
     };
     const i7 = E.CLUBS.findIndex(c => c.id === '7I');
@@ -92,9 +108,10 @@ const OUT = path.dirname(OUTF);
     for (const [name, ci, Tup, hold, drift, phase] of cases) {
       R.k = Math.round(3000 * HZ / 60) * (++runIdx);   // the same clock times in every build, so the finger samples are bit-identical
       putAt(0, 0.6, ci);
+      { const TT = window.__tempo; if (TT.swingZone) Y0 = Math.max(560, Math.ceil(TT.swingZone().top) + 8); }   // (T is the upstroke time inside this loop)
       const o = run({ T: Tup, hold, phase, drift });
       const fr = o.frames;
-      results.push({ club: name, T: Tup, hold, drift, phase, tRev: o.tRev, tFire: o.tFire, tCross: o.tCross, tBall: o.tBall, fBall: o.fBall, shot: o.shot, aTop: Math.max(...fr.map(r => r.a)),
+      results.push({ club: name, T: Tup, hold, drift, phase, flipMs: o.flipMs, peakBendMm: o.peakBendMm, tRev: o.tRev, tFire: o.tFire, tCross: o.tCross, tBall: o.tBall, fBall: o.fBall, shot: o.shot, aTop: Math.max(...fr.map(r => r.a)),
         frames: fr.map(r => [+r.t.toFixed(6), r.mode, r.phase, +r.a.toFixed(4), +r.b.toFixed(4), +r.ts.toFixed(5), r.moved ? 1 : 0, r.bd.map(v => +v.toFixed(5)), r.tau == null ? null : +r.tau.toFixed(5), r.Test == null ? null : +r.Test.toFixed(5), +r.alpha.toFixed(5)]) });
       for (let i = 0; i < 20; i++) frame();
     }
@@ -102,5 +119,7 @@ const OUT = path.dirname(OUTF);
   }, HZ);
   fs.writeFileSync(OUTF, JSON.stringify({ hz: HZ, errors: errs, results: res }));
   console.log('wrote ' + OUTF + ' runs ' + res.length + (errs.length ? ' errors: ' + errs.join(' | ') : ''));
+  const fl = res.map(r => r.flipMs).filter(x => x != null);
+  console.log('flip within 20 ms of contact: ' + fl.filter(x => Math.abs(x) <= 20).length + '/' + res.length + (fl.length ? ', range ' + Math.min(...fl).toFixed(1) + '..' + Math.max(...fl).toFixed(1) + ' ms' : '') + '; peak bend driver ' + Math.max(0, ...res.filter(r => r.club === 'driver').map(r => Math.abs(r.peakBendMm))).toFixed(1) + ' mm, 7-iron ' + Math.max(0, ...res.filter(r => r.club === '7-iron').map(r => Math.abs(r.peakBendMm))).toFixed(1) + ' mm (in plane)');
   await browser.close();
 })();

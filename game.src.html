@@ -69,6 +69,13 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 .card.info .pen { font-size: 19px; font-weight: 800; color: var(--warn); white-space: nowrap; }   /* warn on cream is 4.5:1 */
 .card.info .val { font-size: 18px; font-weight: 800; white-space: nowrap; }
 .card.info .unit { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; margin-left: 3px; }
+/* round 5: while swinging the lie card shows the power (brand face) and the carry (Archivo); past 100% the number is warn */
+.card.info .pw { display: flex; align-items: baseline; gap: 7px; min-width: 0; white-space: nowrap; }
+.card.info .pw[hidden] { display: none; }
+.card.info .pw b { font-size: 26px; line-height: 1; }
+.card.info .pw b.over { color: var(--warn); }
+.card.info .pw span { font-size: 13px; font-weight: 700; }
+#lieChip.power .tx, #lieChip.power .pen { display: none; }
 .holecard { display: flex; align-items: stretch; overflow: hidden; border-left: 0; height: 64px; }
 .holecard .hb { background: var(--green); color: var(--cream); display: flex; align-items: center; gap: 8px; padding: 0 10px; }
 .holecard .hn { display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -107,11 +114,13 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 .clubball b i { font-style: inherit; font-size: 0.74em; margin-left: 0.04em; }   /* the I, W or H after a number: smaller, so 8I does not read as 81 */
 .clubball span { font-size: 12px; font-weight: 700; color: var(--yellow); margin-top: 3px; white-space: nowrap; }
 
+/* round 5: the toast, the score / hole popup and the map hint sit in the band under the HUD cards, above the horizon at address */
 #toast {
-  position: absolute; left: 50%; top: 24%; transform: translate(-50%, -8px); text-align: center; pointer-events: none;
+  position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 166px); transform: translate(-50%, -8px); text-align: center; pointer-events: none;
   opacity: 0; transition: opacity 0.25s, transform 0.25s; width: min(90vw, 460px);
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast.low { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 110px); }   /* the contact toast in flight: above the bottom buttons */
 #toast .tcard { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 16px 9px; max-width: 100%; }
 #toast .q { font-size: 30px; line-height: 1.05; letter-spacing: 0.01em; }
 #toast .q:empty { display: none; }
@@ -121,7 +130,7 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 #toast .d { font-size: 13px; font-weight: 600; }
 /* score popup (round 4): the PURE toast's card and motion; the word in the brand face, yellow underline under par, warn over */
 #banner {
-  position: absolute; left: 50%; top: 34%; transform: translate(-50%, -8px); text-align: center; pointer-events: none;
+  position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 166px); transform: translate(-50%, -8px); text-align: center; pointer-events: none;
   opacity: 0; transition: opacity 0.25s, transform 0.25s; width: min(90vw, 460px);
 }
 #banner.show { opacity: 1; transform: translate(-50%, 0); }
@@ -137,7 +146,7 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
   background: var(--glass-strong); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; white-space: nowrap;
 }
 #maphint {
-  position: absolute; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 168px);
+  position: absolute; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 172px);
   pointer-events: none; font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
 }
 
@@ -151,6 +160,8 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 }
 .screen.dim { background: rgba(8, 15, 11, 0.8); }
 .panel { width: 100%; max-width: 540px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+/* build label (round 5): bump it every round */
+#verLabel { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); font-family: var(--f-body); font-size: 11px; font-weight: 600; color: var(--cream2); pointer-events: none; }
 @media (min-width: 760px) { .panel { margin-left: clamp(0px, 6vw, 96px); } }
 .panel.wide { max-width: 860px; }
 .brand { display: flex; align-items: flex-end; gap: 10px; margin-top: 4vh; }
@@ -328,6 +339,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
         <svg class="gl" viewBox="0 0 24 24" aria-hidden="true"><path id="lieGlyph" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M4 20h16 M12 20V9 M8 9h8"/></svg>
         <div class="tx"><span class="lbl" id="lieTxt">Tee</span><span class="sub" id="lieDet" hidden></span></div>
         <span class="pen num" id="liePen" hidden></span>
+        <div class="pw" id="liePw" hidden><b class="brandtxt num" id="pwPct">0%</b><span class="num" id="pwCarry"></span></div>
       </div>
       <div class="card info">
         <svg class="gl" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M7 21V3"/><path fill="currentColor" d="M7.5 3.5h10l-3 3.5 3 3.5h-10z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 21h7"/></svg>
@@ -387,6 +399,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
         <button class="tog" id="tGuide">Landing guide <i id="tGuideV">On</i></button>
       </div>
     </div>
+    <div id="verLabel">Round 5</div>
   </div>
 
   <!-- TOUR -->
