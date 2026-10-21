@@ -1,7 +1,7 @@
-// G$tick Golf service worker. Build 77f28ffc9b.
+// G$tick Golf service worker. Build b6fe72c69e.
 // The page: network first (a new round shows up as soon as you're online), the cached copy when offline or after 4 s.
 // three.js, icons and launch screens: from the cache. Google Fonts: cached the first time they load, then served from the cache.
-const CORE = 'gstick-core-77f28ffc9b', FONTS = 'gstick-fonts';
+const CORE = 'gstick-core-b6fe72c69e', FONTS = 'gstick-fonts';
 const FILES = ["./", "./index.html", "./three.min.js", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/favicon-32.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./splash/splash-1179x2556.png", "./splash/splash-1206x2622.png", "./splash/splash-1320x2868.png"];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CORE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {

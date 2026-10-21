@@ -34,7 +34,8 @@ const OUTF = process.argv[3] || OUT + '/swing2.json';
     T.startRound({ kind: 'quick', seed: 'sim-b', tier: 4, course: 0 });
     G.manual = true;
     sim.base = performance.now(); sim.on = true; sim.t = sim.base;
-    const X = 195, Y0 = 560, L = Math.min(300, Math.max(140, innerHeight * 0.3));
+    const X = 195, L = T.swingLen ? T.swingLen() : Math.min(300, Math.max(140, innerHeight * 0.3));   // round 5: the game's own swingLen
+    let Y0 = 560;   // round 5: the press must land in the swing zone below the ball (set per run once the ball is placed)
     let bendV = CV.bend, hitV = CV.hit;
     const R = { k: 0, frame0: 0, inLoop: false, j: 0, ts: 1, sub: null, hitT: null };
     Object.defineProperty(CV, 'hit', { configurable: true, get: () => hitV, set: (v) => {
@@ -101,6 +102,7 @@ const OUTF = process.argv[3] || OUT + '/swing2.json';
     for (const [name, ci] of [['driver', 0], ['7-iron', i7]]) for (const [T, hold] of [[120, 0], [200, 0], [300, 0], [200, 500]]) for (const phase of [0, 4, 8, 12, 16]) {
       R.k = 3000 * (++runIdx);   // every run starts at the same clock time in every build, so finger samples are bit-identical
       putAt(0, 0.6, ci);
+      { const TT = window.__tempo; if (TT.swingZone) Y0 = Math.max(560, Math.ceil(TT.swingZone().top) + 8); }   // (T is the upstroke time inside this loop)
       const o = run({ T, hold, phase });
       const sub = o.sub, tc = o.tContact;
       if (tc == null || o.tRev == null) { results.push({ club: name, T, hold, phase, error: 'no contact or no reversal', tRev: o.tRev, tFire: o.tFire, tCross: o.tCross, tBall: o.tBall, nsub: sub.length, lastFrames: o.frames.slice(-3), mode: G.mode }); for (let i = 0; i < 20; i++) frame(); continue; }

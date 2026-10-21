@@ -42,7 +42,7 @@ const SCR = process.env.OUT || '/tmp';
   // aim: drag the aim every frame so the landing preview recomputes every frame
   await phase('aim', () => { const T = window.__tempo; window.__run(60, 4, () => { T.G.aim += 0.002; T.G.previewDirty = true; }); });
   const swing = (pullFrames, flickFrames) => {
-    const T = window.__tempo, x = 195, y0 = 560, L = 250;
+    const T = window.__tempo, x = 195, y0 = T.swingZone ? Math.max(560, Math.ceil(T.swingZone().top) + 8) : 560, L = T.swingLen ? T.swingLen() * 0.99 : 250;   // round 5: press inside the swing zone, pull 99% of the game's swingLen
     window.__ev('pointerdown', x, y0);
     window.__run(pullFrames, 4, (i) => window.__ev('pointermove', x, y0 + L * (1 - Math.pow(1 - (i + 1) / pullFrames, 2))));
     window.__run(flickFrames + 4, 1, (i) => { if (i <= flickFrames) window.__ev('pointermove', x + i, y0 + L - (L + 40) * (i + 1) / flickFrames); if (i === flickFrames) window.__ev('pointerup', x + i, y0 - 40); });
