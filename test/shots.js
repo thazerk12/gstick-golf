@@ -119,7 +119,7 @@ const PART = process.env.PART || 'swing';
       for (let k = 0; k < 72 && !pp; k++) { const a = k * Math.PI / 36, x = h.pin.x + Math.sin(a) * 15, z = h.pin.z + Math.cos(a) * 15; if (h.surface(x, z) === E.S.GREEN) pp = { x, z }; }
       if (!pp) return { error: 'no spot' };
       putAt(pp.x, pp.z, E.CLUBS.length - 1);
-      const L = Math.min(300, Math.max(140, innerHeight * 0.3)), D = L * (15 / E.puttMax(15)) * 1.08, X = 195, Y0 = 560;
+      const L = Math.min(300, Math.max(140, innerHeight * 0.3)), D = L * (window.__tempo.puttPull ? window.__tempo.puttPull(15) : 15 / E.puttMax(15)) * 1.08, X = 195, Y0 = 560;
       ev('pointerdown', X, Y0);
       for (let i = 1; i <= 24; i++) { ev('pointermove', X, Y0 + D * (1 - (1 - i / 24) ** 2)); frame(false); }
       for (let i = 1; i <= 26; i++) { if (G.swing) ev('pointermove', X, Y0 + D - (D + 4) * Math.min(1, i / 24)); frame(false); }

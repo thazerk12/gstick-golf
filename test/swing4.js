@@ -26,6 +26,9 @@ const OUT = path.dirname(OUTF);
   const f = OUT + '/s4_' + HZ + '_' + path.basename(path.dirname(path.resolve(SRC))) + '.html'; fs.writeFileSync(f, html);
   await page.goto('file://' + f);
   await page.waitForFunction(() => window.__tempo && window.__tempo.G.mode === 'menu', null, { timeout: 180000 });
+  if (process.env.Y0) await page.evaluate((y) => { window.__Y0 = y; }, +process.env.Y0);
+  // Y0FROM=<an earlier result file>: the same start line per run as that build used (round 5's zone moved it per run)
+  if (process.env.Y0FROM) await page.evaluate((l) => { window.__Y0L = l; }, JSON.parse(fs.readFileSync(process.env.Y0FROM, 'utf8')).results.map(r => r.y0));
   const res = await page.evaluate((HZ) => {
     const T = window.__tempo, G = T.G, CV = T.CV, E = T.E, sim = window.__sim;
     T.save().seenHow = true;
@@ -81,7 +84,7 @@ const OUT = path.dirname(OUTF);
       while (k < 900) {
         const ts = now() + FD;
         if (!down && ts >= t0) { ev('pointerdown', X, Y0, ts); down = true; }
-        else if (down && G.swing && ts > t0) {
+        else if (down && (G.swing || G.press) && ts > t0) {   // round 6: a press is decided after 10 px of movement
           const before = G.mode, y = Math.round(yAt(ts)), x = Math.round(xAt(ts));
           ev('pointermove', x, y, ts);
           if (y - Y0 > mx) mx = y - Y0;
@@ -108,10 +111,10 @@ const OUT = path.dirname(OUTF);
     for (const [name, ci, Tup, hold, drift, phase] of cases) {
       R.k = Math.round(3000 * HZ / 60) * (++runIdx);   // the same clock times in every build, so the finger samples are bit-identical
       putAt(0, 0.6, ci);
-      { const TT = window.__tempo; if (TT.swingZone) Y0 = Math.max(560, Math.ceil(TT.swingZone().top) + 8); }   // (T is the upstroke time inside this loop)
+      { const TT = window.__tempo; if (window.__Y0L) Y0 = window.__Y0L[runIdx - 1]; else if (window.__Y0) Y0 = window.__Y0; else if (TT.swingZone) Y0 = Math.max(560, Math.ceil(TT.swingZone().top) + 8); }   // round 6: Y0=<px> forces the start line (the same finger path in every build)
       const o = run({ T: Tup, hold, phase, drift });
       const fr = o.frames;
-      results.push({ club: name, T: Tup, hold, drift, phase, flipMs: o.flipMs, peakBendMm: o.peakBendMm, tRev: o.tRev, tFire: o.tFire, tCross: o.tCross, tBall: o.tBall, fBall: o.fBall, shot: o.shot, aTop: Math.max(...fr.map(r => r.a)),
+      results.push({ club: name, T: Tup, hold, drift, phase, y0: Y0, flipMs: o.flipMs, peakBendMm: o.peakBendMm, tRev: o.tRev, tFire: o.tFire, tCross: o.tCross, tBall: o.tBall, fBall: o.fBall, shot: o.shot, aTop: Math.max(...fr.map(r => r.a)),
         frames: fr.map(r => [+r.t.toFixed(6), r.mode, r.phase, +r.a.toFixed(4), +r.b.toFixed(4), +r.ts.toFixed(5), r.moved ? 1 : 0, r.bd.map(v => +v.toFixed(5)), r.tau == null ? null : +r.tau.toFixed(5), r.Test == null ? null : +r.Test.toFixed(5), +r.alpha.toFixed(5)]) });
       for (let i = 0; i < 20; i++) frame();
     }

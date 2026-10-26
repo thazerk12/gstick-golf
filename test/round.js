@@ -29,7 +29,7 @@ const OUT = process.env.OUT;
       G.ball.place(hole, hole.pin.x, hole.pin.z - d); G.lie = 4; G.club = T.E.CLUBS.length - 1;
       G.aim = Math.atan2(hole.pin.x - G.ball.x, hole.pin.z - G.ball.z);
       G.strokes = hole.par - 2 + (h % 3);
-      const target = d + 0.25; const pw = target / T.E.puttMax(d);
+      const target = d + 0.25; const pw = T.puttPull ? T.puttPull(target) : target / T.E.puttMax(d);   // round 6: the game's putt curve
       T.takeShot(pw, 0, 1);
     }, h);
     await page.waitForFunction(() => ['card', 'aim', 'settle'].includes(window.__tempo.G.mode) && window.__tempo.G.ball.state !== 'roll', null, { timeout: 90000 });
@@ -37,7 +37,7 @@ const OUT = process.env.OUT;
     console.log('hole', h + 1, JSON.stringify(st));
     if (st.mode !== 'card') {
       await page.waitForFunction(() => window.__tempo.G.mode === 'aim', null, { timeout: 60000 });
-      await page.evaluate(() => { const T = window.__tempo, G = T.G, hole = G.hole; G.ball.place(hole, hole.pin.x, hole.pin.z - 0.4); G.lie = 4; G.club = T.E.CLUBS.length - 1; G.aim = Math.atan2(hole.pin.x - G.ball.x, hole.pin.z - G.ball.z); T.takeShot(0.65 / T.E.puttMax(0.4), 0, 1); });
+      await page.evaluate(() => { const T = window.__tempo, G = T.G, hole = G.hole; G.ball.place(hole, hole.pin.x, hole.pin.z - 0.4); G.lie = 4; G.club = T.E.CLUBS.length - 1; G.aim = Math.atan2(hole.pin.x - G.ball.x, hole.pin.z - G.ball.z); T.takeShot(T.puttPull ? T.puttPull(0.65) : 0.65 / T.E.puttMax(0.4), 0, 1); });
       await page.waitForFunction(() => window.__tempo.G.mode === 'card', null, { timeout: 90000 });
     }
     if (h === 2) await page.screenshot({ path: OUT + '/r_card.png' });

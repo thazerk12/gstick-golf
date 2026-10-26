@@ -26,7 +26,7 @@ const OUT = process.env.OUT;
     const T = window.__tempo, G = T.G, h = G.hole, E = T.E;
     const d = Math.hypot(h.pin.x - G.ball.x, h.pin.z - G.ball.z);
     // flat-ground distance about 40 cm past the hole
-    T.takeShot((d + 0.4) / E.puttMax(d), 0, 1);
+    T.takeShot(T.puttPull ? T.puttPull(d + 0.4) : (d + 0.4) / E.puttMax(d), 0, 1);   // round 6: the game's putt curve
     return { d, mode: G.mode };
   });
   console.log('putt', JSON.stringify(r));

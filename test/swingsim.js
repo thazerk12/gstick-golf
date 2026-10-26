@@ -269,7 +269,7 @@ const OUTF = process.argv[3] || OUT + '/swingsim.json';
       putAt(pp.x, pp.z, E.CLUBS.length - 1);
       G.flagScale = Math.max(1, 15 / 45); G.flagFrom = G.flagTo = G.flagScale; G.flagT = 1;
       R.frames = [];
-      const target = 15 / E.puttMax(15);
+      const target = window.__tempo.puttPull ? window.__tempo.puttPull(15) : 15 / E.puttMax(15);   // round 6: the game's putt curve
       swing({ power: target * 1.08, pullMs: 400, flickMs: 380, over: 0 });
       runOn(900, r => r.mode === 'aim' || r.mode === 'holed');
       runOn(45);
@@ -282,7 +282,7 @@ const OUTF = process.argv[3] || OUT + '/swingsim.json';
     if (p3) {
       putAt(p3.x, p3.z, E.CLUBS.length - 1);
       R.frames = [];
-      swing({ power: 3.4 / E.puttMax(3), pullMs: 350, flickMs: 300, over: 0 });
+      swing({ power: window.__tempo.puttPull ? window.__tempo.puttPull(3.4) : 3.4 / E.puttMax(3), pullMs: 350, flickMs: 300, over: 0 });
       runOn(600, r => r.mode === 'aim' || r.mode === 'holed');
       fr = R.frames; R.frames = null;
       const near = fr.filter(r => r.dPin < 1 && r.st !== 'holed'), nearAfter03 = [];
