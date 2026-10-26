@@ -31,7 +31,7 @@ const OUT = process.env.OUT || '/tmp', SRC = path.resolve(process.argv[2] || pat
       G.ball.place(hole, hole.pin.x, hole.pin.z - d); G.lie = 4; G.club = T.E.CLUBS.length - 1;
       G.aim = Math.atan2(hole.pin.x - G.ball.x, hole.pin.z - G.ball.z);
       G.strokes = hole.par - 2 + (h % 3);
-      T.takeShot((d + 0.25) / T.E.puttMax(d), 0, 1);
+      T.takeShot(T.puttPull ? T.puttPull(d + 0.25) : (d + 0.25) / T.E.puttMax(d), 0, 1);   // round 6: the game's putt curve
     }, h);
     const tIn = await until("['card','aim','settle'].includes(window.__tempo.G.mode) && window.__tempo.G.ball.state !== 'roll'", 3600);
     const st = await page.evaluate(() => ({ mode: window.__tempo.G.mode, scores: window.__tempo.G.scores.slice(), state: window.__tempo.G.ball.state }));
@@ -39,7 +39,7 @@ const OUT = process.env.OUT || '/tmp', SRC = path.resolve(process.argv[2] || pat
     if (st.mode !== 'card') {
       extra = true;
       await until("window.__tempo.G.mode === 'aim'", 1200);
-      await page.evaluate(() => { const T = window.__tempo, G = T.G, hole = G.hole; G.ball.place(hole, hole.pin.x, hole.pin.z - 0.4); G.lie = 4; G.club = T.E.CLUBS.length - 1; G.aim = Math.atan2(hole.pin.x - G.ball.x, hole.pin.z - G.ball.z); T.takeShot(0.65 / T.E.puttMax(0.4), 0, 1); });
+      await page.evaluate(() => { const T = window.__tempo, G = T.G, hole = G.hole; G.ball.place(hole, hole.pin.x, hole.pin.z - 0.4); G.lie = 4; G.club = T.E.CLUBS.length - 1; G.aim = Math.atan2(hole.pin.x - G.ball.x, hole.pin.z - G.ball.z); T.takeShot(T.puttPull ? T.puttPull(0.65) : 0.65 / T.E.puttMax(0.4), 0, 1); });
       await until("window.__tempo.G.mode === 'card'", 3600);
     }
     const fin = await page.evaluate(() => ({ mode: window.__tempo.G.mode, scores: window.__tempo.G.scores.slice(), cardShown: !document.getElementById('scrCard').hidden }));

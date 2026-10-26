@@ -28,6 +28,14 @@
   color-scheme: dark;
 }
 html, body { height: 100%; }
+/* round 6: iOS 26 lays a home-screen app with the translucent status bar out one status bar too short, and leaves the strip
+   below unpainted, while the document is no taller than that short viewport (WebKit bug 301108). Making the document reach
+   the screen's real height in standalone mode gives the page the full viewport. min() with 100lvh keeps it from scrolling */
+@media (display-mode: standalone) {
+  html { min-height: min(100lvh, calc(100% + env(safe-area-inset-top, 0px))); }
+}
+#safeProbe { position: fixed; left: 0; top: 0; width: 0; height: 0; visibility: hidden; pointer-events: none;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
 [hidden] { display: none !important; }
 body {
   margin: 0; overflow: hidden; background: var(--ground); color: var(--ink);
@@ -61,6 +69,8 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 }
 .stack { display: flex; flex-direction: column; gap: 8px; width: 170px; pointer-events: none; }
 .stack > * { pointer-events: auto; }
+/* round 6: presses anywhere but a button can swing or aim, so the top cards and the flight strip let touches through */
+#hudTop, #hudTop *, #hudStats, #hudStats * { pointer-events: none; }
 .card.info { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 8px; min-width: 0; }
 .card.info .gl { width: 22px; height: 22px; flex: 0 0 22px; display: block; }
 .card.info .tx { display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 1 1 auto; line-height: 1.1; }
@@ -114,6 +124,36 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 .clubball b i { font-style: inherit; font-size: 0.74em; margin-left: 0.04em; }   /* the I, W or H after a number: smaller, so 8I does not read as 81 */
 .clubball span { font-size: 12px; font-weight: 700; color: var(--yellow); margin-top: 3px; white-space: nowrap; }
 
+/* round 6: in flight five small stat cards replace the top cards (putts: two). Brand face for the values, Archivo labels */
+.hud-stats {
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  gap: 6px; align-items: flex-start;
+}
+.scard { flex: 0 1 auto; min-width: 0; height: 46px; display: flex; flex-direction: column; justify-content: center; padding: 0 6px 0 7px; overflow: hidden; }
+.scard .sl { font-size: 9px; font-weight: 800; letter-spacing: 0.08em; line-height: 1; white-space: nowrap; color: var(--green2); }
+.scard b { font-size: 18px; line-height: 1; margin-top: 5px; white-space: nowrap; }
+.scard b small { font-family: var(--f-body); font-style: normal; font-weight: 700; font-size: 9px; margin-left: 1px; font-variation-settings: normal; }
+.scard b.warn { color: var(--warn); }
+@media (max-width: 380px) {   /* 360 px phones: the widest values (109mph · 112% · 12°R · 12°L · SLOW) still fit */
+  .hud-stats { gap: 4px; }
+  .scard { padding: 0 4px 0 5px; }
+  .scard .sl { letter-spacing: 0.02em; }
+  .scard b { font-size: 16px; }
+}
+/* round 6: look (right edge, at the horizon; top set by the game), fast-forward (top right while the ball moves) */
+.rbtn.look { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: 50%; width: 52px; height: 52px; }
+.rbtn.look.on { background: var(--green); color: var(--cream); }
+.rbtn.ff { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 64px); width: 44px; height: 44px; }
+/* round 6: the camera pill sits above the pause button (the bar has no room for a fourth round button at 360 px) */
+.campill {
+  position: absolute; left: 0; bottom: 92px; height: 34px; border-radius: 17px; border: 0; padding: 0 12px 0 9px;
+  background: var(--cream); color: var(--green); display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 2px rgba(31, 58, 42, 0.28);
+  font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+}
+.campill:active { background: var(--cream2); }
+.campill svg { width: 18px; height: 18px; flex: 0 0 18px; }
+
 /* round 5: the toast, the score / hole popup and the map hint sit in the band under the HUD cards, above the horizon at address */
 #toast {
   position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 166px); transform: translate(-50%, -8px); text-align: center; pointer-events: none;
@@ -140,14 +180,12 @@ button:focus-visible, .mbtn:focus-visible { outline: 2px solid var(--flag); outl
 #banner .q.over .lab { text-decoration: underline var(--warn) 4px; text-underline-offset: 6px; }
 #banner .d { font-size: 13px; font-weight: 600; }
 #banner .d:empty { display: none; }
+/* round 6: Pause -> Perf: the screen and viewport sizes, for checking the home-screen app on the phone */
+.sizeinfo { margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--cream); color: var(--green); font: 600 12px/1.45 ui-monospace, 'SF Mono', Menlo, monospace; white-space: pre-wrap; }
 #perf {
   position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 106px);
   pointer-events: none; font: 600 11px ui-monospace, 'SF Mono', Menlo, monospace; color: var(--ink);
   background: var(--glass-strong); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; white-space: nowrap;
-}
-#maphint {
-  position: absolute; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 172px);
-  pointer-events: none; font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
 }
 
 /* ---------- screens ---------- */
@@ -315,7 +353,6 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
   .stack { flex-direction: row; width: auto; }
   .stack .card.info { width: 170px; }
   #toast { top: calc(env(safe-area-inset-top, 0px) + 72px); }
-  #maphint { top: calc(env(safe-area-inset-top, 0px) + 80px); }
 }
 /* menu wordmark: the line through the S is a golf club */
 .logo {
@@ -359,7 +396,20 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
     </div>
   </div>
 
-  <div id="maphint" hidden>TAP THE COURSE TO AIM</div>
+  <div class="hud hud-stats" id="hudStats" hidden>
+    <div class="card scard" id="stSpeed"><span class="sl">SPEED</span><b class="brandtxt num" id="stSpeedV"></b></div>
+    <div class="card scard" id="stPower"><span class="sl">POWER</span><b class="brandtxt num" id="stPowerV"></b></div>
+    <div class="card scard" id="stBack"><span class="sl">BACK</span><b class="brandtxt num" id="stBackV"></b></div>
+    <div class="card scard" id="stThru"><span class="sl">THROUGH</span><b class="brandtxt num" id="stThruV"></b></div>
+    <div class="card scard" id="stTempo"><span class="sl">TEMPO</span><b class="brandtxt num" id="stTempoV"></b></div>
+  </div>
+  <!-- round 6: look at the landing spot (our icon: a flight arc dropping into a ring) and hold to fast-forward (a ball with speed lines) -->
+  <button class="rbtn look" id="btnLook" aria-label="Look at the landing spot" aria-pressed="false" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18.5C4.5 9.5 11.5 4.5 17.5 13"/><path d="M14.4 11.4l3.1 1.8 0.9-3.5"/><ellipse cx="17.5" cy="18" rx="4" ry="1.7"/></svg>
+  </button>
+  <button class="rbtn ff" id="btnFF" aria-label="Fast-forward (hold)" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="16" cy="12" r="4.6"/><path d="M2.5 8.5h6 M1.5 12h6 M2.5 15.5h6"/></svg>
+  </button>
   <div id="perf" hidden></div>
 
   <div class="hud hud-bot" id="hudBot" hidden>
@@ -371,6 +421,10 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
       <div class="clubball"><b class="brandtxt" id="clubName">D</b><span id="clubCarry" class="num">245 yd</span></div>
       <button class="arrow" id="clubNext" aria-label="Next club">›</button>
     </div>
+    <button class="campill" id="btnCam" aria-label="Camera height">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5.5h3.5 M16.5 5.5H20V9 M20 15v3.5h-3.5 M7.5 18.5H4V15"/><circle cx="12" cy="12" r="2.4"/></svg>
+      <span id="camName">Standard</span>
+    </button>
     <button class="rbtn map" id="btnMap" aria-label="Toggle map view" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M3 6.5l5.5-2.5 7 2.5 5.5-2.5v13.5l-5.5 2.5-7-2.5-5.5 2.5z M8.5 4v13.5 M15.5 6.5v13.5"/></svg>
     </button>
@@ -399,7 +453,7 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
         <button class="tog" id="tGuide">Landing guide <i id="tGuideV">On</i></button>
       </div>
     </div>
-    <div id="verLabel">Round 5</div>
+    <div id="verLabel">Round 6</div>
   </div>
 
   <!-- TOUR -->
@@ -485,10 +539,12 @@ table.sc .tot { font-family: var(--f-display); font-size: 20px; font-weight: 900
         <button class="tog" id="pGuide">Landing guide <i id="pGuideV">On</i></button>
         <button class="tog" id="pPerf">Perf <i id="pPerfV">Off</i></button>
       </div>
+      <pre class="sizeinfo num" id="sizeInfo" hidden></pre>
     </div>
   </div>
 
   <div class="loading" id="loading">LOADING COURSE…</div>
+  <div id="safeProbe"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>

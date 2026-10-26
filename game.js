@@ -12,7 +12,7 @@
     return {
       coins: 0, upg: { power: 0, control: 0, spin: 0 }, events: {}, daily: {},
       stats: { rounds: 0, hio: 0, eagles: 0, birdies: 0, longest: 0 },
-      settings: { sound: true, units: 'yd', guide: true, perf: false }, round: null, seenHow: false,
+      settings: { sound: true, units: 'yd', guide: true, perf: false, cam: 'std' }, round: null, seenHow: false,
     };
   }
   function loadSave() {
@@ -123,17 +123,25 @@
   const sky = new THREE.Mesh(new THREE.SphereGeometry(4000, 32, 20), skyMat);
   sky.renderOrder = -100; sky.frustumCulled = false; scene.add(sky);
 
+  // round 6: one measured size, #app's (fixed, inset 0: the whole screen once the page has its full viewport). The renderer,
+  // the FX canvas, swingLen, the gestures and the HUD all read VW x VH. It is re-measured whenever #app changes size, and on
+  // window resize, orientation change and visualViewport changes
   let VW = 1, VH = 1, DPR = 1;
   function resize() {
-    VW = app.clientWidth || window.innerWidth; VH = app.clientHeight || window.innerHeight;
-    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const w = app.clientWidth || window.innerWidth, hh = app.clientHeight || window.innerHeight, d = Math.min(window.devicePixelRatio || 1, 2);
+    if (w === VW && hh === VH && d === DPR) return;
+    VW = w; VH = hh; DPR = d;
     renderer.setPixelRatio(DPR);
     renderer.setSize(VW, VH, false);
     camera.aspect = VW / VH; camera.updateProjectionMatrix();
     fxc.width = Math.round(VW * DPR); fxc.height = Math.round(VH * DPR);
     fx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    if (typeof sizeInfoDirty === 'function') sizeInfoDirty();
   }
   window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => { resize(); setTimeout(resize, 300); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(app);
   resize();
 
   function applyTheme(th) {
@@ -160,9 +168,7 @@
   })();
   const matBall = new THREE.MeshPhongMaterial({ map: ballTex, color: 0xffffff, emissive: 0x262626, specular: 0x777777, shininess: 80 });
   const matShadow = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -16 });
-  const matAim = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -20 });
   const matRing = new THREE.MeshBasicMaterial({ color: 0xf4c531, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -20 });
-  const matLive = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -20 });
   const matFlag = new THREE.MeshLambertMaterial({ color: 0xf4c531, side: THREE.FrontSide, emissive: 0x3a2a00 });   // two-sided cloth geometry (buildPin), so front faces only
   const matPole = new THREE.MeshLambertMaterial({ color: 0xf5f5f0 });
 
@@ -197,7 +203,7 @@
     vertexShader: 'attribute vec3 color;\nattribute float alpha;\nvarying vec3 vC;\nvarying float vA;\nvoid main() { vC = color; vA = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: 'uniform float uFade;\nvarying vec3 vC;\nvarying float vA;\nvoid main() { gl_FragColor = vec4(vC, vA * uFade); }',
   });
-  function traceRibbon(across, quads, order) {
+  function traceRibbon(across, quads, order, mat) {
     const nv = TR_MAX * across, geo = new THREE.BufferGeometry();
     const pos = new Float32Array(nv * 3), col = new Float32Array(nv * 3), al = new Float32Array(nv), idx = new Uint16Array((TR_MAX - 1) * quads.length * 6);
     let o = 0;
@@ -205,16 +211,23 @@
     const pa = new THREE.BufferAttribute(pos, 3), ca = new THREE.BufferAttribute(col, 3), aa = new THREE.BufferAttribute(al, 1);
     pa.setUsage(THREE.DynamicDrawUsage); ca.setUsage(THREE.DynamicDrawUsage); aa.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('position', pa); geo.setAttribute('color', ca); geo.setAttribute('alpha', aa); geo.setIndex(new THREE.BufferAttribute(idx, 1));
-    const mesh = new THREE.Mesh(geo, matTrace); mesh.frustumCulled = false; mesh.renderOrder = order; mesh.visible = false; scene.add(mesh);
+    const mesh = new THREE.Mesh(geo, mat || matTrace); mesh.frustumCulled = false; mesh.renderOrder = order; mesh.visible = false; scene.add(mesh);
     return { mesh, geo, pos, col, al, pa, ca, aa, across, perSeg: quads.length * 6 };
   }
   // glow: left edge, centre, right edge. core: one band, left to right
   const trGlow = traceRibbon(3, [[0, 1], [1, 2]], 6), trCore = traceRibbon(2, [[0, 1]], 6.5);
   const TRP = { x: new Float32Array(TR_MAX), y: new Float32Array(TR_MAX), z: new Float32Array(TR_MAX), cum: new Float32Array(TR_MAX) };
   const tracer = { n: 0, pure: null, begin() { this.n = 0; }, end() { trGlow.mesh.visible = trCore.mesh.visible = false; this.n = 0; } };
-  const aimLine = new Strip(400, matAim, 7);
+  // aim beam (round 6, replaces the always-on aim line and the live landing ring): a soft cream ribbon, alpha per vertex (0 at
+  // both edges, so they are soft), faded as a whole by uFade. Same three-across ribbon as the tracer's glow
+  const matBeam = new THREE.ShaderMaterial({
+    uniforms: { uFade: { value: 1 }, uCol: { value: new THREE.Color(PALETTE.cream) } }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -20,
+    vertexShader: 'attribute float alpha;\nvarying float vA;\nvoid main() { vA = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform float uFade;\nuniform vec3 uCol;\nvarying float vA;\nvoid main() { gl_FragColor = vec4(uCol, vA * uFade); }',
+  });
+  const beam = traceRibbon(3, [[0, 1], [1, 2]], 7, matBeam);
   const ring = new Strip(64, matRing, 8);
-  const liveRing = new Strip(40, matLive, 9);
 
   const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), matBall); scene.add(ballMesh);
   ballMesh.renderOrder = -4; // drawn before the cup lid so it stays visible inside the hole
@@ -1269,10 +1282,40 @@
     holeOut: { depth: 0.102, wallE: 0.3, poleE: 0.3, poleR: 0.0125, bottomE: 0.3, bottomFric: 0.4, rollTau: 0.07, settle: 0.6, push: 0.6, hitMin: 0.02, rattleMin: 0.1, rattleGap: 0.04, step: 0.001 },   // hitMin: slower wall contact is rolling along it
     ballCapEase: 0.3,                                      // s: ball size cap transition
     tracer: { wPerM: 0.004, wMin: 0.025, wMax: 1.6, start: 0.3, glow: 2.2, glowA: 0.45, coreA: 0.94, headBoost: 1.0, ballMax: 0.8, hold: 0.7, fade: 0.6 },   // half-width per m from the camera (min, max m); start taper; glow width x core; alphas; head boost; core at the ball <= ballMax x ball diameter; s (round 4: no edge, hold 1.2 -> 0.7)
-    // swing zone (round 5): starts `below` x height under the ball, ends at the bottom buttons, never less than minH x height;
-    // swingLen = len x height, clamped to lenMin..lenMax px. Power stays linear in the pull (the same 112% cap)
-    swingZone: { below: 0.04, minH: 0.12, len: 0.25, lenMin: 140, lenMax: 260 },
-    hint: { chev: 9, bob: 3 },                              // first-shots hint: chevron half-width and bob (px)
+    // swingLen = len x height, clamped to lenMin..lenMax px (round 5). Power stays linear in the pull (the same 112% cap). Round 6:
+    // no zone; any press can start a swing (FEEL.gesture)
+    swingZone: { len: 0.25, lenMin: 140, lenMax: 260 },
+    // round 6 gestures: a one-finger press anywhere but a button waits for decidePx of movement; within swingDeg of straight
+    // down it is a swing (the press point is the start line), anything else turns the aim. A tap does nothing in aim
+    gesture: { decidePx: 10, swingDeg: 35 },
+    // aim drag: rad per px of sideways drag (putter puttSens); on release the aim coasts at its last speed (measured over velWin
+    // s, capped at coastMax rad/s), slowing with time constant coastTau s and stopping coastT s after release. The address
+    // camera's yaw springs to the aim at camOmega rad/s (critically damped)
+    aim: { sens: 0.0026, puttSens: 0.0011, velWin: 0.08, coastMax: 1.4, coastTau: 0.06, coastT: 0.3, camOmega: 9 },
+    // aim beam (round 6, replaces the always-on aim line): shows while dragging and holdT s after, then fades over fadeT s. Cream,
+    // alpha at the ball (fading to fadeTo x along it), soft edges; width w0 m at the ball + wK m per m, at most wMax m
+    // It ends at the full-power landing spot (with the Landing guide on, in the yellow ring; off: lenNoGuide m) or puttPast m
+    // past the cup (putts, at most puttMax m); it fades in over the first inMax m (at most 12% of it)
+    beam: { holdT: 0.6, fadeT: 0.3, alpha: 0.4, fadeTo: 0.25, w0: 0.25, wK: 0.03, wMax: 6, step: 1.2, lift: 0.08, start: 0.35, inMax: 4,
+      lenNoGuide: 40, puttPast: 0.5, puttMax: 30, puttW: 0.09, puttStep: 0.15, puttLift: 0.012 },
+    // look mode (round 6): fly in over inT s to back/up m from the club's full-power landing spot, looking `ahead` m past it;
+    // fly back over outT s. One-finger drag pans (panK x the ground under the finger), pinch zooms zoomMin..zoomMax; pan is
+    // kept within panMax m. Putts: the whole green, puttBack / puttUp x its radius behind and above its centre. FOV fov
+    // From that height the slope grid (12 mm above the drawn green) loses the depth test to the green itself, so in look mode
+    // only it is drawn with a depth bias (gridBias: polygon offset factor, units); at address it is drawn as round 5
+    look: { inT: 0.9, outT: 0.5, back: 30, up: 24, ahead: 8, fov: 52, panK: 1, panMax: 160, zoomMin: 0.5, zoomMax: 2.2, puttBack: 1.4, puttUp: 2.0, gridBias: [-4, -40],
+      btnY: [0.3, 0.62] },   // the look button's centre: on the address view's horizon, kept between these shares of the height
+    // address chevron (round 6): under the ball (`below` x height down), moved up if a full pull from there wouldn't fit above
+    // the bottom edge (fitPad px); half-width and bob in px; "PULL DOWN · FLICK UP" under it for the first textShots shots
+    hint: { chev: 9, bob: 3, below: 0.05, fitPad: 8, textShots: 3 },
+    // putting (round 6): one curve. Flat roll = dMax x p^2 m, p = pull / swingLen (to the 1.12 cap); E.puttSpeed turns it into
+    // the ball speed for this green's stimp. No tempo penalty on putts
+    putt: { dMax: 24 },
+    // flight strip (round 6): clubhead speed = launch ball speed / smash (by club class)
+    stats: { smash: { driver: 1.48, wood: 1.45, hybrid: 1.40, iron: 1.35, wedge: 1.25 } },
+    // distance label (round 6): rides gap px above the drawn ball (h px tall, font px Archivo 700) in flight and on the roll;
+    // at rest it holds restT s, then fades over fadeT s
+    label: { gap: 6, h: 16, font: 14, restT: 1, fadeT: 0.4 },
     hudSwingDim: 0.4,                                       // bottom buttons' opacity while swinging (round 5)
     fontWait: 1.5,                                         // s: longest wait for the brand face before the game starts without it
     pinMarker: { far: 60, near: 40, h: 18 },               // flag glyph over the pin: full above `far` m from the camera, gone under `near`; px tall
@@ -1703,7 +1746,7 @@
     else CV.alpha += (CV.alphaT - CV.alpha) * (1 - Math.exp(-dt / FEEL.path.tiltTau));
     const P = CV.shot || G.ball, sp = CV.spec, a = CV.a * D2R, b = CV.b * D2R;
     clubRoot.position.set(P.x, P.y + visOff(P.x, P.z, 0), P.z);   // round 5: on the green's drawn relief
-    clubRoot.rotation.set(0, (CV.shot ? CV.shot.yaw : G.aim) - CV.alpha * 0.07, 0);
+    clubRoot.rotation.set(0, (CV.shot ? CV.shot.yaw : addrYaw()) - CV.alpha * 0.07, 0);   // round 6: the camera's yaw at address
     curClub.grp.position.set(-sp.rArm * Math.sin(a), -sp.rArm * Math.cos(a), 0);
     curClub.grp.rotation.set(0, 0, -(a + b));
     applyFlex(curClub, CV.bend);
@@ -1869,6 +1912,9 @@
     pendingShot: null, dip: null, timeScale: 1, sinkT0: 0, ip: { x: 0, y: 0, z: 0 }, bd: { x: 0, y: 0, z: 0 }, ipAlpha: 1, camOrbit: null, bprev: { x: 0, y: 0, z: 0, ok: false }, flashAt: null,
     ballCap: 1.5, capFrom: 1.5, capTo: 1.5, capT: 1, ballScale: 1,
     manual: false,
+    // round 6: the pending press (before it becomes a swing or an aim drag), the aim coast, the beam's clock, look mode, the
+    // map / look pan and zoom, the address camera's yaw and hold, the last gesture decision (for tests)
+    press: null, aimCoast: null, beamT: 99, look: null, view: { px: 0, pz: 0, zoom: 1 }, camYaw: null, camYawV: 0, camLock: false, camKey: '', gesture: null,
   };
 
   /* =================== perf readout =================== */
@@ -1896,7 +1942,23 @@
     for (let i = 0; i < PERF.ring.length; i++) { const r = PERF.ring[i]; if (r.t >= 0 && now - r.t <= 5000 && (!w || r.ms > w.ms)) w = r; }
     $('perf').textContent = Math.round(PERF.fps) + ' fps' + (w ? ' · worst ' + Math.round(w.ms) + ' ms · ' + w.mode + (w.key ? ' · ' + w.key + ' ' + w.keyMs.toFixed(1) + ' ms' : '') : '');
   }
-  function setPerf(on) { PERF.on = on; $('perf').hidden = !on; for (const r of PERF.ring) r.t = -1; PERF.fpsN = 0; PERF.fpsT = 0; }
+  function setPerf(on) { PERF.on = on; $('perf').hidden = !on; for (const r of PERF.ring) r.t = -1; PERF.fpsN = 0; PERF.fpsT = 0; sizeInfoDirty(); }
+  // round 6: the size readout (Pause -> Perf): display mode, window, #app, screen, visual viewport, safe-area insets, pixel ratios
+  function sizeInfo() {
+    const px = (v) => Math.round(parseFloat(v) || 0), ps = getComputedStyle($('safeProbe')), vv = window.visualViewport;
+    const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+    return { mode: standalone ? 'standalone' : 'browser', inner: [innerWidth, innerHeight], app: [app.clientWidth, app.clientHeight], screen: [screen.width, screen.height],
+      vv: vv ? [Math.round(vv.width), Math.round(vv.height)] : null, safe: { top: px(ps.paddingTop), right: px(ps.paddingRight), bottom: px(ps.paddingBottom), left: px(ps.paddingLeft) },
+      dpr: window.devicePixelRatio || 1, gl: renderer.getPixelRatio(), size: [VW, VH], canvas: [glc.width, glc.height] };
+  }
+  function sizeInfoDirty() {
+    const el = $('sizeInfo'); if (!el) return;
+    el.hidden = !save.settings.perf; if (el.hidden) return;
+    const s = sizeInfo();
+    el.textContent = 'display  ' + s.mode + '\nwindow   ' + s.inner.join(' × ') + '\n#app     ' + s.app.join(' × ') + '\nscreen   ' + s.screen.join(' × ') +
+      '\nvisual   ' + (s.vv ? s.vv.join(' × ') : '—') + '\nsafe     top ' + s.safe.top + ' · right ' + s.safe.right + ' · bottom ' + s.safe.bottom + ' · left ' + s.safe.left +
+      '\npixels   device ' + s.dpr + ' · renderer ' + s.gl + ' · canvas ' + s.canvas.join(' × ');
+  }
   const cam = { pos: new V3(0, 30, -60), look: new V3(0, 0, 100), tPos: new V3(), tLook: new V3(), k: 4, vel: new V3(), lvel: new V3(),
     fov: 52, tFov: 52, fovV: 0 };   // vertical fov (deg), sprung like the position (round 5: no lens shift)
 
@@ -1907,6 +1969,13 @@
   }
   function effCarry(c) { return c.fullCarry * lieMul(c, G.lie) * (1 + 0.022 * save.upg.power); }
   function isPutter() { return E.CLUBS[G.club].putter; }
+  // round 6 putting: flat roll (m) for a pull p (share of swingLen, to the 1.12 cap); and the pull for a flat roll
+  function puttRoll(p) { const q = clamp(p, 0, 1.12); return FEEL.putt.dMax * q * q; }
+  function puttPull(d) { return Math.sqrt(Math.max(0, d) / FEEL.putt.dMax); }
+  // whole feet (metric: 0.1 m) for putt distances in the round 6 cards, toast and label
+  function fmtFt(m) { return yd() ? Math.round(m * 3.2808) + ' ft' : (m < 10 ? m.toFixed(1) : Math.round(m)) + ' m'; }
+  // clubhead speed from launch ball speed (round 6 flight strip): smash factor by club class
+  function smashFor(c) { const S2 = FEEL.stats.smash, id = c.id; return id === 'DR' ? S2.driver : /^\dW$/.test(id) ? S2.wood : /^\dH$/.test(id) ? S2.hybrid : /^\dI$/.test(id) ? S2.iron : S2.wedge; }   // PW GW SW LW: wedges
 
   function autoClub() {
     const dist = distToPin();
@@ -1975,8 +2044,9 @@
     buildWorld(G.hole);
     G.ball.place(G.hole, 0, 0.6);
     G.ball.path = [];
-    G.strokes = 0; G.lie = S.TEE; G.map = false;
+    G.strokes = 0; G.lie = S.TEE; G.map = false; G.lastPutt = null;
     resetClub(); G.pendingShot = null; G.dip = null; G.bprev.ok = false; G.sinkS = null;
+    addrReset();
     G.club = autoClub(); autoAim();
     lieDecal(null);
     G.previewDirty = true;
@@ -1997,6 +2067,7 @@
   function takeShot(power, rawDev, tempoMul, pathF) {
     pBeg('takeShot');
     const club = E.CLUBS[G.club], b = G.ball;
+    if (club.putter) tempoMul = 1;   // round 6: no tempo penalty on putts (the flick angle still pushes and pulls)
     let dev = rawDev;
     const tags = [];
     if (power > 1.0) { dev += (Math.random() * 2 - 1) * (power - 1) * 3.6; tags.push('OVERSWING'); }
@@ -2015,16 +2086,22 @@
     G.strokes++;
     lieDecal(null);   // the lie decal goes as soon as the ball moves
     G.shot = { club: club.id, putt: !!club.putter, sx: b.x, sz: b.z, lie: G.lie, power, dev, landed: false, carry: 0 };
+    // the swing's back and through angles for the flight strip (fire() leaves them; a direct call has none)
+    const sw = G.swingStats; G.swingStats = null;
     if (club.putter) {
-      const dist = distToPin();
-      const target = power * E.puttMax(dist);
-      const sp = E.puttSpeed(G.hole, target) * tempoMul;
+      // round 6: one curve, the same for every putt length; E.puttSpeed gives the speed for this green's stimp
+      const target = puttRoll(power);
+      const sp = E.puttSpeed(G.hole, target);
+      G.shot.stats = { putt: true, roll: target, through: sw ? sw.phi : null };
+      G.lastPutt = target;
       b.putt(G.hole, sp, G.aim + dev * 1.7 * Math.PI / 180 * (1 - 0.06 * save.upg.control));
       pBeg('Snd.play'); Snd.impact('putt', shotLie, clamp(sp / FEEL.sound.putt.vFull, 0, 1)); pEnd('Snd.play');   // louder the harder it is struck
       G.shot.label = Math.abs(dev) > 0.3 ? (dev < 0 ? 'PUSHED' : 'PULLED') : '';
     } else {
       const sp = E.shotParams(club, power * tempoMul, dev, G.lie, save.upg);
       b.launch(sp.speed, sp.launch, G.aim + sp.aimOff, sp.spin, sp.side);
+      // round 6 flight strip: clubhead mph = launch ball speed / smash
+      G.shot.stats = { putt: false, ball: sp.speed, speed: sp.speed * 2.23694 / smashFor(club), power: power * 100, back: sw ? sw.beta : null, through: sw ? sw.phi : null, slow: tempoMul < 0.96 };
       const pw = clamp(power, 0.1, 1.12);
       pBeg('Snd.play'); Snd.impact(flexClass(G.club), shotLie, clamp(sp.speed / 65, 0.2, 1), Math.min(pw, 1)); pEnd('Snd.play');
       // weight: a brief slow-motion at contact (never a freeze) and debris off the turf
@@ -2048,6 +2125,7 @@
     G.trEnd = null; G.trAim = null;
     G.ip.x = b.x; G.ip.y = b.y; G.ip.z = b.z;          // interpolation starts from the ball at rest
     tracer.begin(); tracer.end();
+    fillStats();
     pBeg('toast/HUD'); showToast(G.shot.label, '', 1400, G.shot.putt ? '' : 'low');
     updateHUD(true); pEnd('toast/HUD');
     pEnd('takeShot');
@@ -2095,8 +2173,10 @@
     lieDecal(b.x, b.z);
     const total = Math.hypot(b.x - shot.sx, b.z - shot.sz);
     if (shot.putt) {
-      const left = distToPin();
-      showToast(left < 1.5 ? 'TAP-IN LEFT' : (G.ball.lipped ? 'LIPPED' : ''), fmtShort(left) + ' left', 1500);
+      // round 6: how far long or short it finished, along the line from where it started to the cup
+      const ux = h.pin.x - shot.sx, uz = h.pin.z - shot.sz, D = Math.hypot(ux, uz) || 1, diff = ((b.x - shot.sx) * ux + (b.z - shot.sz) * uz) / D - D;
+      shot.miss = diff;
+      showToast(fmtFt(Math.abs(diff)) + (diff >= 0 ? ' long' : ' short'), G.ball.lipped ? 'LIPPED' : '', 1500);
     } else {
       const carry = shot.carry || total;
       showToast(shot.label.split(' · ')[0], 'Carry ' + fmtD(carry) + ' · Total ' + fmtD(total) + ' · ' + E.SURF_NAMES[lie], 2200);
@@ -2105,6 +2185,11 @@
     G.mode = 'settle'; G.timer = shot.putt ? 0.8 : 1.3;
   }
 
+  // round 6: a new address starts with the camera's yaw on the aim, nothing pressed, no coast, no beam and no look mode
+  function addrReset() {
+    G.camYaw = null; G.camYawV = 0; G.camLock = false; G.camKey = ''; G.press = null; G.aimDrag = null; G.aimCoast = null; G.beamT = 99;
+    G.look = null; G.vptr = null; G.pinch = null; G.view = { px: 0, pz: 0, zoom: 1 };
+  }
   function nextShot() {
     const h = G.hole;
     if (G.pending) { G.ball.place(h, G.pending.x, G.pending.z); G.pending = null; }
@@ -2114,6 +2199,7 @@
     if (G.strokes >= h.par + 5) { pickUp(); return; }
     G.club = autoClub(); autoAim();
     resetClub(); G.bprev.ok = false;
+    addrReset();
     {
       const b = G.ball, hx = b.x - cam.pos.x, hz = b.z - cam.pos.z, hl = Math.hypot(hx, hz);
       const cosA = hl > 1e-3 ? (hx * Math.sin(G.aim) + hz * Math.cos(G.aim)) / hl : 1;
@@ -2227,34 +2313,55 @@
     }
   }
 
+  // round 6: nothing is drawn on the course at rest or in the swing. While the aim is turned (drag, coast, keys or wheel) and
+  // holdT s after, a soft beam runs from the ball along the aim, then fades over fadeT s. It is drawn along the aim itself while
+  // the camera's yaw catches up, so it leans the way you're turning. The Landing guide decides whether it ends in the ring
   function updateAimVisuals() {
-    aimLine.begin(); ring.begin(); liveRing.begin();
-    const show = (G.mode === 'aim' || G.mode === 'swing' || G.mode === 'impact') && !G.paused;
-    if (show) {
-      const b = G.ball, dx = Math.sin(G.aim), dz = Math.cos(G.aim);
-      if (isPutter()) {
-        const L = Math.min(distToPin() + 0.5, 30);
-        drapeLine(aimLine, b.x + dx * 0.08, b.z + dz * 0.08, dx, dz, L, 0.2, 0.03, 0.03, true, 0.012);
-      } else {
-        if (G.previewDirty || !PV.done) { pBeg('computePreview'); computePreview(); pEnd('computePreview'); }
-        const P = G.preview;
-        if (save.settings.guide && P) {
-          const camD = Math.hypot(cam.pos.x - b.x, cam.pos.z - b.z);
-          drapeLine(aimLine, b.x + dx * 1.5, b.z + dz * 1.5, dx, dz, Math.max(P.carry - 1.5, 1), Math.max(2.2, P.carry / 48), 0.05 + camD * 0.004, Math.max(0.35, P.carry * 0.0035), true, 0.1);
-          const rr = clamp(P.carry * 0.028, 1.5, 7);
-          drapeRing(ring, P.x, P.z, rr, Math.max(0.18, rr * 0.09));
-        } else if (!save.settings.guide || PV.done) {
-          drapeLine(aimLine, b.x + dx * 1.5, b.z + dz * 1.5, dx, dz, 40, 2.2, 0.06, 0.3, true, 0.1);
-        }
-        if (G.mode === 'swing' && G.swing && G.swing.power > 0.03 && save.settings.guide) {
-          const c = E.CLUBS[G.club];
-          const carry = E.carryFor(c, Math.min(G.swing.power, 1.12)) * lieMul(c, G.lie) * (1 + 0.022 * save.upg.power);
-          const x = b.x + dx * carry, z = b.z + dz * carry;
-          drapeRing(liveRing, x, z, clamp(carry * 0.016, 0.8, 3.5), clamp(carry * 0.006, 0.12, 1));
-        }
-      }
+    ring.begin();
+    const B = FEEL.beam;
+    G.beamT = (G.beamT == null ? 99 : G.beamT) + (G.lastDt || 0);
+    if (G.aimDrag || (G.keys.left || G.keys.right)) G.beamT = 0;
+    const fade = 1 - E.smoothstep(B.holdT, B.holdT + B.fadeT, G.beamT);
+    // the full-power landing spot (the beam's end and the look view's target) is kept current whenever the aim or club changes
+    if (G.mode === 'aim' && !G.paused && !isPutter() && (G.previewDirty || !PV.done)) { pBeg('computePreview'); computePreview(); pEnd('computePreview'); }
+    const show = G.mode === 'aim' && !G.paused && !G.map && !G.look && fade > 0.001;
+    if (!show) {
+      beam.mesh.visible = false;
+      // look mode: the ring marks the full-power landing spot (the canvas adds the club and the distance to the pin)
+      if (G.look && G.mode === 'aim' && !isPutter() && G.preview) { const P = G.preview, rr = clamp(P.carry * 0.028, 1.5, 7); drapeRing(ring, P.x, P.z, rr, Math.max(0.18, rr * 0.09)); matRing.opacity = 0.95; }
+      ring.end(); return;
     }
-    aimLine.end(); ring.end(); liveRing.end();
+    const b = G.ball;
+    if (isPutter()) {
+      drawBeam(Math.min(distToPin() + B.puttPast, B.puttMax), 0.08, B.puttW, B.puttW, B.puttStep, B.puttLift, fade);
+    } else {
+      const P = G.preview;
+      if (save.settings.guide && P) {
+        drawBeam(Math.max(P.carry, B.start + 1), B.start, B.w0, B.wMax, B.step, B.lift, fade);
+        const rr = clamp(P.carry * 0.028, 1.5, 7);
+        drapeRing(ring, P.x, P.z, rr, Math.max(0.18, rr * 0.09));
+      } else if (!save.settings.guide || PV.done) drawBeam(B.lenNoGuide, B.start, B.w0, B.wMax, B.step, B.lift, fade);
+      else beam.mesh.visible = false;
+    }
+    matRing.opacity = 0.95 * fade;
+    ring.end();
+  }
+  // the beam from `start` m to `len` m along the aim: width w0 at the ball growing wK per m (at most wMax), soft edges, alpha
+  // falling to fadeTo x along it, faded in over the first inMax m
+  function drawBeam(len, start, w0, wMax, step, lift, fade) {
+    const B = FEEL.beam, b = G.ball, dx = Math.sin(G.aim), dz = Math.cos(G.aim), sx = dz, sz = -dx;
+    const n = Math.min(TR_MAX, Math.max(2, Math.ceil((len - start) / step) + 1)), P = beam.pos, A = beam.al, fin = Math.min(B.inMax, (len - start) * 0.12);
+    for (let i = 0; i < n; i++) {
+      const d = start + (len - start) * i / (n - 1), x = b.x + dx * d, z = b.z + dz * d, y = hFast(x, z) + lift;
+      const w = Math.min(w0 + B.wK * d, wMax) / 2, o = i * 9;
+      P[o] = x - sx * w; P[o + 1] = y; P[o + 2] = z - sz * w;
+      P[o + 3] = x; P[o + 4] = y; P[o + 5] = z;
+      P[o + 6] = x + sx * w; P[o + 7] = y; P[o + 8] = z + sz * w;
+      const k = i / (n - 1), q = i * 3;
+      A[q] = 0; A[q + 1] = B.alpha * lerp(1, B.fadeTo, k) * E.smoothstep(start, start + fin, d); A[q + 2] = 0;
+    }
+    beam.pa.needsUpdate = beam.aa.needsUpdate = true;
+    beam.geo.setDrawRange(0, (n - 1) * beam.perSeg); beam.mesh.visible = true; matBeam.uniforms.uFade.value = fade;
   }
 
   function updateTracer() {
@@ -2330,6 +2437,8 @@
     } else { G.ipAlpha = 1; d.x = b.x; d.y = b.y; d.z = b.z; p.x = b.x; p.y = b.y; p.z = b.z; }
   }
   const _q = new THREE.Quaternion(), _ax = new V3(), _up = new V3(0, 1, 0);
+  // round 6: the address ball's size factor: enough for ADDR.ballMinPx CSS px across at this camera distance, 1 .. ballMaxK
+  function addrBallK(cd) { const px = 2 * E.BALL_R / Math.max(cd, 0.1) * VH / (2 * Math.tan(camera.fov * D2R / 2)); return clamp(ADDR.ballMinPx / px, 1, ADDR.ballMaxK); }
   function updateBallVisual(sdt) {
     const b = G.ball, h = G.hole, bd = G.bd;
     const show = G.mode !== 'menu';
@@ -2383,7 +2492,7 @@
       if (b.vy < 0) { const v = -b.vy, hg = Math.max(0, b.y - E.BALL_R - gh), tl = (Math.sqrt(v * v + 19.62 * hg) - v) / 9.81; if (tl < 0.34) capT = groundCap(bd.x + b.vx * tl, bd.z + b.vz * tl); }
     }
     if (Math.hypot(b.x - h.pin.x, b.z - h.pin.z) < 1) capT = 1;
-    if (G.mode === 'aim' || G.mode === 'swing' || G.mode === 'impact') capT = 1;   // round 5: real size at address
+    if (G.mode === 'aim' || G.mode === 'swing' || G.mode === 'impact') capT = addrBallK(cd);   // round 6: at least ballMinPx at address
     if (putting) capT = 1;
     if (putting || onGreen) { G.ballCap = G.capFrom = G.capTo = capT; G.capT = FEEL.ballCapEase; }
     else {
@@ -2486,11 +2595,20 @@
     pos.needsUpdate = true;
   }
 
+  // the green (its centre or any of four points on its edge) is on screen
+  const _gv = new V3();
+  function greenInView() {
+    const h = G.hole, R = Math.max(h.grx, h.grz); camera.updateMatrixWorld();
+    for (const [ox, oz] of [[0, 0], [R, 0], [-R, 0], [0, R], [0, -R]]) { _gv.set(h.green.x + ox, h.height(h.green.x + ox, h.green.z + oz), h.green.z + oz).project(camera); if (_gv.z < 1 && Math.abs(_gv.x) <= 1 && Math.abs(_gv.y) <= 1) return true; }
+    return false;
+  }
   function updateDots(t) {
     if (!world.dots) return;
-    const show = (G.mode === 'aim' || G.mode === 'swing' || G.mode === 'impact' || (G.mode === 'flight' && G.shot && G.shot.putt)) && (G.lie === S.GREEN || G.lie === S.FRINGE || distToPin() < 30);
+    const show = ((G.mode === 'aim' || G.mode === 'swing' || G.mode === 'impact' || (G.mode === 'flight' && G.shot && G.shot.putt)) && (G.lie === S.GREEN || G.lie === S.FRINGE || distToPin() < 30))
+      || !!(G.look && G.mode === 'aim' && greenInView());   // round 6: look mode, whenever the green is on screen (a boolean: three.js draws anything not === false)
     world.dots.visible = show; if (world.grid) world.grid.visible = show;
     if (!show) return;
+    const lk = !!G.look; matGrid.polygonOffset = lk; matGrid.polygonOffsetFactor = lk ? FEEL.look.gridBias[0] : 0; matGrid.polygonOffsetUnits = lk ? FEEL.look.gridBias[1] : 0;
     matGrid.uniforms.uRes.value.set(VW, VH);
     const arr = world.dots.geometry.attributes.position.array, D = world.dotData;
     for (let i = 0; i < D.length; i++) {
@@ -2515,58 +2633,175 @@
   // The camera sits on the target line, 17.5 deg above the ball, so the ball is centred at 62% of the height, the horizon
   // falls at 37% (below the card band under the HUD cards, even with the iPhone's top inset), and the whole club at address
   // keeps >= 5.2% margin; shorter clubs sit closer, so their ball shows bigger (DR 8.0 px .. LW 13.0 px at 390x844).
-  const ADDR = { ahead: 30, fov0: 52,
+  // round 6: the Standard preset, framed like the reference: the camera 9.61 m back and 1.12 m up on the target line, FOV 40,
+  // so the ball is centred 66.4% down, the horizon 50.5% down and a 7-iron at address spans 13.2% of the height (every club at
+  // the same scale, so each spans by its real length). 13.2% is the low end of the 13-16% asked for: 8% further back than the
+  // 14.2% first tried keeps the whole 7-iron to lob wedge on screen through the downswing (a 7-iron at 14.2% left the screen's
+  // left edge by up to 12 px early in the downswing). The ball is drawn at least ballMinPx CSS px across, up to ballMaxK x
+  // real size. Presets: Close is the same view 1/1.4 as far away (everything 1.4x bigger, the ball and horizon where they
+  // were); High keeps Standard's distance and swings the camera up until the horizon is at horizonY (the ball where it was).
+  // `down` is re-solved for every preset so the ball stays at ballY: down = (back + ahead) tan(atan(up/back) - ab) - up,
+  // ab = atan((2 ballY - 1) tan(fov / 2)). Putts: the round 4 putting camera is Standard; Close brings it 1/1.4 nearer, High
+  // raises it puttHighK x
+  // round 5 (replaced): per club back 2.15-3.47 m, up 0.68-1.10 m, FOV 64, ball 62% down, horizon 37.4%
+  const ADDR = { ahead: 30, fov0: 52, ballY: 0.665, ballMinPx: 7, ballMaxK: 1.5,
     club: {
-      DR: { back: 3.472, up: 1.095, down: 4.189, fov: 64 }, '3W': { back: 3.195, up: 1.007, down: 4.233, fov: 64 },
-      '4H': { back: 2.880, up: 0.908, down: 4.283, fov: 64 }, '5I': { back: 2.613, up: 0.824, down: 4.325, fov: 64 },
-      '6I': { back: 2.556, up: 0.806, down: 4.334, fov: 64 }, '7I': { back: 2.499, up: 0.788, down: 4.343, fov: 64 },
-      '8I': { back: 2.432, up: 0.767, down: 4.353, fov: 64 }, '9I': { back: 2.375, up: 0.749, down: 4.362, fov: 64 },
-      PW: { back: 2.318, up: 0.731, down: 4.371, fov: 64 }, GW: { back: 2.270, up: 0.716, down: 4.379, fov: 64 },
-      SW: { back: 2.203, up: 0.695, down: 4.389, fov: 64 }, LW: { back: 2.146, up: 0.677, down: 4.398, fov: 64 } },
+      DR: { back: 9.61, up: 1.119, down: -1.263, fov: 40 }, '3W': { back: 9.61, up: 1.119, down: -1.263, fov: 40 },
+      '4H': { back: 9.61, up: 1.119, down: -1.263, fov: 40 }, '5I': { back: 9.61, up: 1.119, down: -1.263, fov: 40 },
+      '6I': { back: 9.61, up: 1.119, down: -1.263, fov: 40 }, '7I': { back: 9.61, up: 1.119, down: -1.263, fov: 40 },
+      '8I': { back: 9.61, up: 1.119, down: -1.263, fov: 40 }, '9I': { back: 9.61, up: 1.119, down: -1.263, fov: 40 },
+      PW: { back: 9.61, up: 1.119, down: -1.263, fov: 40 }, GW: { back: 9.61, up: 1.119, down: -1.263, fov: 40 },
+      SW: { back: 9.61, up: 1.119, down: -1.263, fov: 40 }, LW: { back: 9.61, up: 1.119, down: -1.263, fov: 40 } },
+    preset: { close: { k: 1 / 1.4 }, high: { horizonY: 0.375 } }, puttHighK: 1.7,
     putt: { back0: 1.9, backK: 0.2, up0: 0.85, upK: 0.075, dMax: 4, look0: 1.2, lookK: 0.75, lookMax: 10, lookDown: 0.2 } };
-  function addrFor(ci) { return ADDR.club[E.CLUBS[ci].id] || ADDR.club.DR; }
+  const CAM_PRESETS = ['close', 'std', 'high'], CAM_NAMES = { close: 'Close', std: 'Standard', high: 'High' };
+  function camPreset() { return CAM_PRESETS.includes(save.settings.cam) ? save.settings.cam : 'std'; }
+  function solveDown(back, up, fov) { const ab = Math.atan((2 * ADDR.ballY - 1) * Math.tan(fov * D2R / 2)); return (back + ADDR.ahead) * Math.tan(Math.atan2(up, back) - ab) - up; }
+  // the address camera for club ci in a preset (default: the saved one)
+  const _addr = { back: 0, up: 0, down: 0, fov: 0 };
+  function addrFor(ci, preset) {
+    const A = ADDR.club[E.CLUBS[ci].id] || ADDR.club.DR, p = preset || camPreset(), o = _addr;
+    o.fov = A.fov;
+    if (p === 'close') { const k = ADDR.preset.close.k; o.back = A.back * k; o.up = A.up * k; o.down = solveDown(o.back, o.up, o.fov); }
+    else if (p === 'high') {
+      const t = Math.tan(A.fov * D2R / 2), d = Math.hypot(A.back, A.up), dep = Math.atan((2 * ADDR.ballY - 1) * t) + Math.atan((1 - 2 * ADDR.preset.high.horizonY) * t);
+      o.back = d * Math.cos(dep); o.up = d * Math.sin(dep); o.down = solveDown(o.back, o.up, o.fov);
+    } else { o.back = A.back; o.up = A.up; o.down = A.down; }
+    return o;
+  }
   // the putting camera for a putt of d m (above the ball, behind it along the line): address and the roll share it
-  function puttCam(d) { const P = ADDR.putt, k = Math.min(d, P.dMax); return { back: P.back0 + k * P.backK, up: P.up0 + k * P.upK }; }
-  function addressCam() {
-    const b = G.ball, h = G.hole;
-    const dx = Math.sin(G.aim), dz = Math.cos(G.aim);
-    if (G.map) {
-      const px = h.pin.x, pz = h.pin.z;
-      const mx = (b.x + px) / 2, mz = (b.z + pz) / 2;
-      const span = Math.max(Math.hypot(px - b.x, pz - b.z), 40);
-      const asp = VW / VH;
-      const H = span * (asp < 1 ? 1.35 : 1.15) + 45;
-      const ux = (px - b.x) / span, uz = (pz - b.z) / span;
-      const cx = mx + ux * span * 0.04, cz = mz + uz * span * 0.04;
-      cam.tPos.set(cx - ux * span * 0.12, h.height(mx, mz) + H, cz - uz * span * 0.12);
-      cam.tLook.set(cx, h.height(mx, mz), cz);
-      cam.k = 5; return;
-    }
+  // round 6 presets: Close brings it 1/1.4 nearer, High raises it puttHighK x; the look point's drop below the ball (`down`) is
+  // re-solved so the ball stays where the Standard putting camera puts it on screen (la: how far ahead it looks)
+  function puttCam(d) {
+    const P = ADDR.putt, k = Math.min(d, P.dMax), p = camPreset();
+    const back0 = P.back0 + k * P.backK, up0 = P.up0 + k * P.upK, la = Math.min(d, P.lookMax) * P.lookK + P.look0;
+    let back = back0, up = up0;
+    if (p === 'close') { back *= ADDR.preset.close.k; up *= ADDR.preset.close.k; } else if (p === 'high') up *= ADDR.puttHighK;
+    const ab = Math.atan2(up0, back0) - Math.atan2(up0 + P.lookDown, back0 + la);   // the ball's angle below the view's centre
+    return { back, up, la, down: (back + la) * Math.tan(Math.atan2(up, back) - ab) - up };
+  }
+  // round 6: the address camera turns round the ball by its own yaw, which springs to the aim (FEEL.aim.camOmega): while the aim
+  // is dragged the ball and club stay put on screen and the aim line leans the way you're turning. Once the camera has
+  // arrived it is held exactly on its target (no position spring), so the ball can't drift
+  function stepCamYaw(dt) {
+    if (G.camYaw == null) { G.camYaw = G.aim; G.camYawV = 0; }
+    const T = G.camYaw + Math.atan2(Math.sin(G.aim - G.camYaw), Math.cos(G.aim - G.camYaw));
+    const r = springAxis(G.camYaw, G.camYawV || 0, T, FEEL.aim.camOmega, dt); G.camYaw = r[0]; G.camYawV = r[1];
+  }
+  function addrYaw() { return G.camYaw != null ? G.camYaw : G.aim; }
+  // the address camera's target (cam.tPos / tLook / tFov) for the club, the camera's yaw and the preset. Returns a key: when it
+  // changes (club, putter, preset) the hold is released and the camera moves on its spring
+  function addrTarget() {
+    const b = G.ball, yaw = addrYaw(), dx = Math.sin(yaw), dz = Math.cos(yaw);
     const by = b.y + visOff(b.x, b.z, 0);   // round 5: the drawn ball on the green's relief
     if (isPutter()) {
       // crouched behind the ball, reading the line
       const d = distToPin(), P = ADDR.putt, pc = puttCam(d);
       cam.tPos.set(b.x - dx * pc.back, by + pc.up, b.z - dz * pc.back);
-      const la = Math.min(d, P.lookMax) * P.lookK + P.look0;
-      cam.tLook.set(b.x + dx * la, by - P.lookDown, b.z + dz * la);
-    } else {
-      // a club change moves the camera on its spring (no snap)
-      const A = addrFor(G.club);
-      cam.tPos.set(b.x - dx * A.back, by + A.up, b.z - dz * A.back);
-      cam.tLook.set(b.x + dx * ADDR.ahead, by - A.down, b.z + dz * ADDR.ahead);
-      cam.tFov = A.fov;
+      cam.tLook.set(b.x + dx * pc.la, by - pc.down, b.z + dz * pc.la);
+      cam.tFov = ADDR.fov0;
+      return 'putt' + camPreset();
     }
+    const A = addrFor(G.club);
+    cam.tPos.set(b.x - dx * A.back, by + A.up, b.z - dz * A.back);
+    cam.tLook.set(b.x + dx * ADDR.ahead, by - A.down, b.z + dz * ADDR.ahead);
+    cam.tFov = A.fov;
+    return [A.back, A.up, A.down, A.fov].join();
+  }
+  // the map (round 6: look only): over the middle of ball and pin, panned and zoomed by G.view
+  function mapTarget() {
+    const b = G.ball, h = G.hole, px = h.pin.x, pz = h.pin.z;
+    const mx = (b.x + px) / 2, mz = (b.z + pz) / 2;
+    const span = Math.max(Math.hypot(px - b.x, pz - b.z), 40);
+    const asp = VW / VH;
+    const V = G.view, H = (span * (asp < 1 ? 1.35 : 1.15) + 45) * V.zoom;
+    const ux = (px - b.x) / span, uz = (pz - b.z) / span;
+    const cx = mx + ux * span * 0.04 + V.px, cz = mz + uz * span * 0.04 + V.pz;
+    cam.tPos.set(cx - ux * span * 0.12 * V.zoom, h.height(mx, mz) + H, cz - uz * span * 0.12 * V.zoom);
+    cam.tLook.set(cx, h.height(mx, mz), cz);
+    cam.tFov = ADDR.fov0;
+  }
+  function addressCam() {
+    const b = G.ball;
+    let key;
+    if (G.map) { mapTarget(); key = 'map'; G.camOrbit = null; } else key = addrTarget();
     cam.k = 5;
+    if (key !== G.camKey) { G.camKey = key; G.camLock = false; }
     const O = G.camOrbit;
     if (O) {
       // swing round the ball at a constant height-blended radius instead of cutting through it
+      const by = b.y + visOff(b.x, b.z, 0);
       O.t += G.lastDt || 0; const e = E.smoothstep(0, 1, O.t / FEEL.cam.orbitT);
       const tx = cam.tPos.x - b.x, tz = cam.tPos.z - b.z, aT = Math.atan2(tx, tz), rT = Math.hypot(tx, tz), yT = cam.tPos.y - by;
       let da = aT - O.a0; da = Math.atan2(Math.sin(da), Math.cos(da));
       const an = O.a0 + da * e, r = lerp(O.r0, rT, e);
       cam.tPos.set(b.x + Math.sin(an) * r, by + lerp(O.y0, yT, e), b.z + Math.cos(an) * r);
       if (O.t >= FEEL.cam.orbitT) G.camOrbit = null;
+      G.camLock = false; return;
     }
+    // round 6: once the camera has arrived it is held exactly on its target (no position spring), so while the aim is dragged
+    // it turns round the ball with its yaw spring alone and the ball can't drift
+    if (!G.camLock && cam.pos.distanceTo(cam.tPos) < 0.01 && cam.look.distanceTo(cam.tLook) < 0.05 && Math.abs(cam.fov - cam.tFov) < 0.05) G.camLock = true;
+    if (G.camLock) { cam.pos.copy(cam.tPos); cam.look.copy(cam.tLook); cam.vel.set(0, 0, 0); cam.lvel.set(0, 0, 0); cam.fov = cam.tFov; cam.fovV = 0; }
+  }
+  // the address view's horizon, as a share of the height from the top (the look button sits on it)
+  function addrHorizonY() {
+    let pitch, fov;
+    if (isPutter()) { const pc = puttCam(distToPin()); pitch = Math.atan2(pc.up + pc.down, pc.back + pc.la); fov = ADDR.fov0; }
+    else { const A = addrFor(G.club); pitch = Math.atan2(A.up + A.down, A.back + ADDR.ahead); fov = A.fov; }
+    return 0.5 - Math.tan(pitch) / (2 * Math.tan(fov * D2R / 2));
+  }
+
+  // ---- look mode (round 6). The look button flies the camera (inT s, smoothstep) along the aim line to above the selected
+  // club's full-power landing spot, looking down the line at it; putts: the whole green from above and behind. One finger
+  // pans, two pinch to zoom; the aim and club never change and no swing can start. Tapping it again flies back (outT s)
+  const _lf = { pos: new V3(), look: new V3(), fov: 52 };
+  function camSnap() { return { pos: cam.pos.clone(), look: cam.look.clone(), fov: cam.fov }; }
+  // the selected club's full-power landing spot: the preview point (before it is ready: the full carry straight down the aim)
+  function lookSpot() {
+    if (G.preview) return G.preview;
+    const c = E.CLUBS[G.club], d = effCarry(c), b = G.ball; return { x: b.x + Math.sin(G.aim) * d, z: b.z + Math.cos(G.aim) * d, carry: d };
+  }
+  function lookTarget() {
+    const L = FEEL.look, h = G.hole, Lk = G.look, dx = Math.sin(G.aim), dz = Math.cos(G.aim), z = Lk.zoom;
+    if (isPutter()) {
+      const R = Math.max(h.grx, h.grz) + h.fringeW, cx = h.green.x + Lk.px, cz = h.green.z + Lk.pz, cy = h.height(h.green.x, h.green.z);
+      _lf.pos.set(cx - dx * R * L.puttBack * z, cy + R * L.puttUp * z, cz - dz * R * L.puttBack * z);
+      _lf.look.set(cx, cy, cz);
+    } else {
+      const P = lookSpot(), sx = P.x + Lk.px, sz = P.z + Lk.pz, sy = h.height(sx, sz);
+      _lf.pos.set(sx - dx * L.back * z, sy + L.up * z, sz - dz * L.back * z);
+      _lf.look.set(sx + dx * L.ahead, sy, sz + dz * L.ahead);
+    }
+    _lf.fov = L.fov;
+    return _lf;
+  }
+  function lookCam(dt) {
+    const Lk = G.look, L = FEEL.look, F = Lk.from;
+    Lk.t += dt;
+    let e;
+    if (Lk.phase === 'out') {
+      const key = addrTarget(); e = E.smoothstep(0, 1, Lk.t / L.outT);
+      cam.pos.copy(F.pos).lerp(cam.tPos, e); cam.look.copy(F.look).lerp(cam.tLook, e); cam.fov = lerp(F.fov, cam.tFov, e);
+      if (Lk.t >= L.outT) { G.lookLast = { inS: Lk.inS, outS: Lk.t }; G.look = null; G.camKey = key; G.camLock = true; updateHUD(true); }
+    } else {
+      const T = lookTarget(); e = Lk.phase === 'in' ? E.smoothstep(0, 1, Lk.t / L.inT) : 1;
+      cam.pos.copy(F.pos).lerp(T.pos, e); cam.look.copy(F.look).lerp(T.look, e); cam.fov = lerp(F.fov, T.fov, e);
+      if (Lk.phase === 'in' && Lk.t >= L.inT) { Lk.phase = 'on'; Lk.inS = Lk.t; }
+    }
+    // the camera follows the fly exactly (no spring)
+    cam.tPos.copy(cam.pos); cam.tLook.copy(cam.look); cam.tFov = cam.fov;
+    cam.vel.set(0, 0, 0); cam.lvel.set(0, 0, 0); cam.fovV = 0; cam.k = 5;
+  }
+  function toggleLook() {
+    if (G.mode !== 'aim' || G.map || G.paused) return;
+    if (!G.look) {
+      G.press = null; G.aimDrag = null; G.aimCoast = null; G.beamT = 99; G.vptr = null; G.pinch = null; G.camOrbit = null;
+      G.look = { phase: 'in', t: 0, px: 0, pz: 0, zoom: 1, from: camSnap(), inS: null };
+      hideTransients();
+    } else if (G.look.phase !== 'out') { G.look.phase = 'out'; G.look.t = 0; G.look.from = camSnap(); G.vptr = null; G.pinch = null; }
+    else return;
+    Snd.play('tick'); updateHUD(true);
   }
   function flightCam() {
     const b = G.ball, s = G.shot, bd = G.bd;
@@ -2603,8 +2838,8 @@
   // every point's vertical view angle by the same amount, so the needed tilt is exact
   const _ft = new THREE.Vector3(); let hudTopKey = '', hudTopY = 0;
   function hudTopBottom() {
-    const key = VW + 'x' + VH + ($('hudTop').hidden ? 'h' : 'v');
-    if (key !== hudTopKey) { hudTopKey = key; hudTopY = 0; document.querySelectorAll('#hudTop .card').forEach((e) => { const r = e.getBoundingClientRect(); if (r.height > 0) hudTopY = Math.max(hudTopY, r.bottom); }); }
+    const key = VW + 'x' + VH + ($('hudTop').hidden ? 'h' : 'v') + ($('hudStats').hidden ? 'h' : 'v');   // round 6: or the flight strip
+    if (key !== hudTopKey) { hudTopKey = key; hudTopY = 0; document.querySelectorAll('#hudTop .card, #hudStats .card').forEach((e) => { const r = e.getBoundingClientRect(); if (r.height > 0) hudTopY = Math.max(hudTopY, r.bottom); }); }
     return hudTopY;
   }
   function flightTilt(dt) {
@@ -2612,7 +2847,8 @@
     let need = 0;
     if (G.mode === 'flight' && G.shot && !G.shot.putt) {
       camera.updateMatrixWorld(); _ft.set(G.bd.x, G.bd.y + (G.ballVis || 0), G.bd.z).project(camera);
-      const top = 1 - 2 * (hudTopBottom() + FEEL.cam.flightTopPad) / VH, t = Math.tan(camera.fov * D2R / 2);
+      // round 6: room for the distance label that rides above the ball, too
+      const top = 1 - 2 * (hudTopBottom() + FEEL.cam.flightTopPad + FEEL.label.gap + FEEL.label.h) / VH, t = Math.tan(camera.fov * D2R / 2);
       if (_ft.z < 1 && _ft.y > top) need = Math.atan(_ft.y * t) - Math.atan(top * t);
     }
     const cur = G.camTilt || 0;
@@ -2706,13 +2942,17 @@
         if (t >= 1) { G.mode = 'aim'; updateHUD(true); }
         break;
       }
-      case 'impact': addressCam(); break;
+      case 'impact': stepCamYaw(dt); addressCam(); break;
       case 'aim': case 'swing': {
         const k = G.keys;
         const rate = (k.shift ? 0.12 : 0.6) * (isPutter() ? 0.25 : 1);
-        if (k.left) { G.aim += rate * dt; G.previewDirty = true; }
-        if (k.right) { G.aim -= rate * dt; G.previewDirty = true; }
-        addressCam();
+        if (!G.look) {
+          if (k.left) { G.aim += rate * dt; G.previewDirty = true; }
+          if (k.right) { G.aim -= rate * dt; G.previewDirty = true; }
+        }
+        // round 6: the aim coasts after a drag; the camera's yaw springs after the aim
+        stepAimCoast(dt); stepCamYaw(dt);
+        if (G.look) lookCam(dt); else addressCam();
         break;
       }
       case 'flight': {
@@ -2766,6 +3006,7 @@
     updateDots(G.time);
     if (G.mode === 'aim' || G.mode === 'swing' || G.mode === 'flight') updateHUD(false);
     updatePowerCard();
+    hudVis();
   }
 
   /* =================== swing input =================== */
@@ -2774,15 +3015,15 @@
   // finger trail for the swing overlay, kept in fixed arrays so moving the finger allocates nothing
   const TRAIL = { x: new Float32Array(60), y: new Float32Array(60), t: new Float64Array(60), n: 0, h: 0 };
   function trailPush(x, y, t) { const i = TRAIL.h; TRAIL.x[i] = x; TRAIL.y[i] = y; TRAIL.t[i] = t; TRAIL.h = (i + 1) % 60; if (TRAIL.n < 60) TRAIL.n++; }
-  // round 5: a swing starts from a press below the ball (its screen y + below x height) and above the bottom buttons; presses
-  // above it aim. When the ball sits low (putts), the zone keeps at least minH x height above the buttons
-  function swingZone() {
-    const Z = FEEL.swingZone, by = ballScreen()[1];
-    let bot = VH; for (const id of ['btnPause', 'clubPrev', 'clubNext', 'btnMap']) { const r = $(id).getBoundingClientRect(); if (r.height > 0) bot = Math.min(bot, r.top); }
-    const cb = document.querySelector('#hudBot .clubball').getBoundingClientRect(); if (cb.height > 0) bot = Math.min(bot, cb.top);
-    return { top: Math.min(by + Z.below * VH, bot - Z.minH * VH), bottom: bot, ballY: by };
+  // ---- round 6 gestures: one rule, no zones. A one-finger press anywhere but a button (the top cards let touches through) waits
+  // for FEEL.gesture.decidePx of movement. Within swingDeg of straight down it is a swing and the press point is the start line,
+  // exactly as before (the samples so far are replayed into it); anything else turns the aim (sideways movement only). A tap
+  // does nothing in aim. The full pull is swingLen wherever it starts; started low, its power stops growing at the bottom edge
+  function pressDecide(p, x, y) {
+    const dx = x - p.x0, dy = y - p.y0, Gs = FEEL.gesture;
+    if (Math.hypot(dx, dy) < Gs.decidePx) return null;
+    return dy > 0 && Math.atan2(Math.abs(dx), dy) <= Gs.swingDeg * D2R + 1e-9 ? 'swing' : 'aim';   // 35 deg itself is a swing
   }
-
   function onDown(e) {
     Snd.init();
     if (G.paused || e.button > 0) return;
@@ -2794,32 +3035,44 @@
     if (G.mode !== 'aim') return;
     const x = e.clientX, y = e.clientY;
     try { touch.setPointerCapture(e.pointerId); } catch (er) { /* ignore */ }
-    if (G.map) { mapAim(x, y); return; }
-    const zone = swingZone();
-    if (y >= zone.top && y <= zone.bottom) {
-      G.swing = { id: e.pointerId, x0: x, y0: y, x, y, xLow: x, yLow: y, maxDy: 0, phase: 'back', power: 0, t0: performance.now(), tBottom: 0, tLift: performance.now(), ix: x };
-      TRAIL.n = 0; trailPush(x, y, performance.now());
-      G.mode = 'swing'; updateHUD(true);
-    } else {
-      G.aimDrag = { id: e.pointerId, x0: x, a0: G.aim };
-    }
+    if (G.map || G.look) { viewDown(e.pointerId, x, y); return; }
+    if (G.press || G.aimDrag) return;   // one finger at a time
+    G.aimCoast = null;                  // a press catches a coasting aim
+    G.press = { id: e.pointerId, x0: x, y0: y, t0: performance.now(), smp: [] };
   }
   function onMove(e) {
+    if (G.vptr && G.vptr.has(e.pointerId)) { viewMove(e.pointerId, e.clientX, e.clientY); return; }
     const now = performance.now();
-    if (G.aimDrag && e.pointerId === G.aimDrag.id) {
-      const sens = isPutter() ? 0.0011 : 0.0026;
-      G.aim = G.aimDrag.a0 - (e.clientX - G.aimDrag.x0) * sens;
-      G.previewDirty = true;
-      return;
-    }
-    const s = G.swing;
-    if (!s || e.pointerId !== s.id || G.mode !== 'swing') return;
-    const px = s.x, py = s.y;
-    s.x = e.clientX; s.y = e.clientY;
-    trailPush(s.x, s.y, now);
     // when the sample was taken: the event's own timestamp if it is on this clock (it is on phones), else the handling time.
     // Used only for the club's prediction; the shot (tempo clock, power, path) still runs on the handling time
     const tS = e.timeStamp > 0 && Math.abs(e.timeStamp - now) < 100 ? e.timeStamp : now;
+    const p = G.press;
+    if (p && e.pointerId === p.id) {
+      p.smp.push([e.clientX, e.clientY, now, tS]);
+      const k = pressDecide(p, e.clientX, e.clientY);
+      if (!k) return;
+      G.press = null;
+      G.gesture = { kind: k, x0: p.x0, y0: p.y0, x: e.clientX, y: e.clientY, n: p.smp.length };
+      if (k === 'swing') startSwing(p); else startAimDrag(p, e.clientX, now);
+      return;
+    }
+    if (G.aimDrag && e.pointerId === G.aimDrag.id) { aimDragTo(e.clientX, now); return; }
+    const s = G.swing;
+    if (!s || e.pointerId !== s.id || G.mode !== 'swing') return;
+    swingMove(s, e.clientX, e.clientY, now, tS);
+  }
+  // a swing from a decided press: the same state the press would have made, then every sample since replayed in order
+  function startSwing(p) {
+    const s = G.swing = { id: p.id, x0: p.x0, y0: p.y0, x: p.x0, y: p.y0, xLow: p.x0, yLow: p.y0, maxDy: 0, phase: 'back', power: 0, t0: p.t0, tBottom: 0, tLift: p.t0, ix: p.x0 };
+    TRAIL.n = 0; trailPush(p.x0, p.y0, p.t0);
+    G.mode = 'swing'; G.beamT = 99; updateHUD(true);
+    for (const q of p.smp) { if (G.swing !== s || G.mode !== 'swing') break; swingMove(s, q[0], q[1], q[2], q[3]); }
+  }
+  // one finger sample of a swing (x, y CSS px; now: handling time; tS: the sample's own time)
+  function swingMove(s, x, y, now, tS) {
+    const px = s.x, py = s.y;
+    s.x = x; s.y = y;
+    trailPush(s.x, s.y, now);
     // touch sample interval: mean of the last 4, clamped; it sets how far the downswing is predicted past a sample
     if (s.tm != null && tS > s.tm) { s.iv = s.iv || []; s.iv.push((tS - s.tm) / 1000); if (s.iv.length > 4) s.iv.shift(); let m = 0; for (const v of s.iv) m += v; s.touchDt = clamp(m / s.iv.length, FEEL.down.predictMin, FEEL.down.predictMax); }
     s.tm = tS;
@@ -2871,6 +3124,62 @@
       fire(now);
     }
   }
+  // aim drag: only the sideways part turns the aim (putter finer); on release it coasts (FEEL.aim)
+  function aimSens() { return isPutter() ? FEEL.aim.puttSens : FEEL.aim.sens; }
+  function startAimDrag(p, x, now) { G.aimDrag = { id: p.id, x0: p.x0, a0: G.aim, hist: [[p.t0, G.aim]] }; aimDragTo(x, now); }
+  function aimDragTo(x, now) {
+    const d = G.aimDrag;
+    G.aim = d.a0 - (x - d.x0) * aimSens(); G.previewDirty = true; G.beamT = 0;
+    d.hist.push([now, G.aim]);
+    while (d.hist.length > 2 && now - d.hist[1][0] > FEEL.aim.velWin * 1000) d.hist.shift();   // ms clock, s tuning
+  }
+  function endAimDrag(now) {
+    const d = G.aimDrag; G.aimDrag = null; if (!d) return;
+    const A = FEEL.aim, h = d.hist, l = h[h.length - 1];
+    let v = 0;
+    if (now - l[0] <= A.velWin * 1000) { const f = h[0], dt = (l[0] - f[0]) / 1000; if (dt > 1e-3) v = (l[1] - f[1]) / dt; }
+    v = clamp(v, -A.coastMax, A.coastMax);
+    G.aimCoast = Math.abs(v) > 1e-3 ? { v, t: 0 } : null; G.beamT = 0;
+  }
+  // the coast: aim speed v e^(-t/coastTau), stopped at coastT s (exact integral per frame)
+  function stepAimCoast(dt) {
+    const c = G.aimCoast; if (!c) return;
+    const A = FEEL.aim, t1 = Math.min(c.t + dt, A.coastT);
+    G.aim += c.v * A.coastTau * (Math.exp(-c.t / A.coastTau) - Math.exp(-t1 / A.coastTau));
+    c.t = t1; G.previewDirty = true;
+    if (c.t >= A.coastT) G.aimCoast = null;
+  }
+  // look mode and the map: one finger pans (the ground follows the finger), two pinch to zoom. Nothing aims or picks a club
+  function curView() { return G.look || G.view; }
+  function viewDown(id, x, y) {
+    if (!G.vptr) G.vptr = new Map();
+    G.vptr.set(id, { x, y });
+    if (G.vptr.size === 2) { const [a, b] = [...G.vptr.values()]; G.pinch = { d0: Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)), z0: curView().zoom }; }
+  }
+  function viewMove(id, x, y) {
+    const P = G.vptr.get(id), V = curView(), L = FEEL.look;
+    if (G.look && G.look.phase === 'out') return;
+    if (G.vptr.size >= 2) {
+      P.x = x; P.y = y;
+      if (!G.pinch) return;
+      const [a, b] = [...G.vptr.values()];
+      V.zoom = clamp(G.pinch.z0 * G.pinch.d0 / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)), L.zoomMin, L.zoomMax);
+      return;
+    }
+    const dx = x - P.x, dy = y - P.y; P.x = x; P.y = y;
+    viewPan(V, dx, dy);
+  }
+  function viewUp(id) { G.vptr.delete(id); if (G.vptr.size < 2) G.pinch = null; }
+  // pan by a finger move (px): metres per px at the view's focus; screen-down moves are stretched by the ground's tilt
+  function viewPan(V, dx, dy) {
+    const L = FEEL.look, d = cam.pos.distanceTo(cam.look), m = d * 2 * Math.tan(camera.fov * D2R / 2) / VH * L.panK;
+    const sd = Math.max(0.35, (cam.pos.y - cam.look.y) / Math.max(d, 1e-3));
+    let fx = cam.look.x - cam.pos.x, fz = cam.look.z - cam.pos.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
+    const rx = -fz, rz = fx;   // screen right on the ground
+    V.px += -rx * dx * m + fx * dy * m / sd; V.pz += -rz * dx * m + fz * dy * m / sd;
+    const r = Math.hypot(V.px, V.pz); if (r > L.panMax) { V.px *= L.panMax / r; V.pz *= L.panMax / r; }
+  }
+
   function fire(now) {
     const s = G.swing; if (!s) return;
     const L = swingLen();
@@ -2884,7 +3193,8 @@
     CV.alphaT = swipe;
     const dev = -swipe;
     const td = (now - s.tDown) / 1000;
-    const tempoMul = td <= 0.34 ? 1 : clamp(1 - (td - 0.34) * 0.75, 0.6, 1);
+    const tempoMul = isPutter() ? 1 : td <= 0.34 ? 1 : clamp(1 - (td - 0.34) * 0.75, 0.6, 1);   // round 6: no tempo on putts
+    G.swingStats = { phi: G.phi, beta: G.beta };
     // the finger commits the swing; the shot fires when the clubhead actually reaches the ball
     G.pendingShot = { power: s.power, dev, tempoMul, f };
     G.flashAt = { x: s.ix, y: s.y0 };
@@ -2896,7 +3206,9 @@
   function cancelSwing() { G.swing = null; if (G.mode === 'swing') G.mode = 'aim'; }
   function onUp(e) {
     if (G.ff) G.ff = false;
-    if (G.aimDrag && e.pointerId === G.aimDrag.id) { G.aimDrag = null; return; }
+    if (G.vptr && G.vptr.has(e.pointerId)) { viewUp(e.pointerId); return; }
+    if (G.press && e.pointerId === G.press.id) { const p = G.press; G.press = null; G.gesture = { kind: 'tap', x0: p.x0, y0: p.y0 }; return; }   // a tap does nothing in aim
+    if (G.aimDrag && e.pointerId === G.aimDrag.id) { endAimDrag(performance.now()); return; }
     const s = G.swing;
     if (!s || e.pointerId !== s.id) return;
     // released during a fast flick before crossing: count it if it was clearly moving up and near the line
@@ -2906,40 +3218,29 @@
   touch.addEventListener('pointerdown', onDown);
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
-  window.addEventListener('pointercancel', (e) => { if (G.swing && e.pointerId === G.swing.id) cancelSwing(); G.aimDrag = null; G.ff = false; });
+  window.addEventListener('pointercancel', (e) => {
+    if (G.swing && e.pointerId === G.swing.id) cancelSwing();
+    if (G.press && e.pointerId === G.press.id) G.press = null;
+    if (G.aimDrag && e.pointerId === G.aimDrag.id) G.aimDrag = null;
+    if (G.vptr && G.vptr.has(e.pointerId)) viewUp(e.pointerId);
+    G.ff = false;
+  });
   touch.addEventListener('wheel', (e) => {
     if (G.mode !== 'aim' || G.paused) return;
     e.preventDefault();
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-    G.aim -= d * (isPutter() ? 0.0004 : 0.0012); G.previewDirty = true;
+    if (G.map || G.look) { const V = curView(), L = FEEL.look; V.zoom = clamp(V.zoom * Math.exp(d * 0.002), L.zoomMin, L.zoomMax); return; }
+    G.aim -= d * (isPutter() ? 0.0004 : 0.0012); G.previewDirty = true; G.beamT = 0;
   }, { passive: false });
-
-  const raycaster = new THREE.Raycaster();
-  function mapAim(x, y) {
-    raycaster.setFromCamera({ x: x / VW * 2 - 1, y: -(y / VH) * 2 + 1 }, camera);
-    const hit = raycaster.intersectObjects([world.terrain, world.greenMesh], false)[0];
-    if (!hit) return;
-    const b = G.ball;
-    G.aim = Math.atan2(hit.point.x - b.x, hit.point.z - b.z);
-    // pick a club that reaches the tapped spot
-    const d = Math.hypot(hit.point.x - b.x, hit.point.z - b.z);
-    if (!isPutter()) {
-      let pick = G.lie === S.TEE ? 0 : 1;
-      for (let i = PT - 1; i >= 0; i--) { if (i === 0 && G.lie !== S.TEE) continue; if (effCarry(E.CLUBS[i]) >= d * 0.97) { pick = i; break; } }
-      G.club = pick;
-    }
-    G.previewDirty = true; G.mapTap = { x: hit.point.x, z: hit.point.z, t: 0 };
-    Snd.play('tick');
-    updateHUD(true);
-  }
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft') G.keys.left = true;
     else if (e.key === 'ArrowRight') G.keys.right = true;
     else if (e.key === 'Shift') G.keys.shift = true;
-    else if (e.key === 'ArrowUp' && G.mode === 'aim') { changeClub(-1); e.preventDefault(); }
-    else if (e.key === 'ArrowDown' && G.mode === 'aim') { changeClub(1); e.preventDefault(); }
-    else if ((e.key === 'm' || e.key === 'M') && G.mode === 'aim') toggleMap();
+    else if (e.key === 'ArrowUp' && G.mode === 'aim' && !G.look) { changeClub(-1); e.preventDefault(); }
+    else if (e.key === 'ArrowDown' && G.mode === 'aim' && !G.look) { changeClub(1); e.preventDefault(); }
+    else if ((e.key === 'm' || e.key === 'M') && G.mode === 'aim' && !G.look) toggleMap();
+    else if ((e.key === 'l' || e.key === 'L') && G.mode === 'aim') toggleLook();
     else if (e.key === ' ') { if (G.mode === 'flight') G.ff = true; else if (G.mode === 'intro') G.timer = 3.6; e.preventDefault(); }
     else if (e.key === 'Escape') { if (G.paused) resume(); else if (['aim', 'flight', 'settle', 'intro'].includes(G.mode)) pause(); }
   });
@@ -2956,11 +3257,27 @@
     if (c === 0 && G.lie !== S.TEE && E.CLUBS[0].id === 'DR') { /* driver off the deck is allowed */ }
     G.club = c; G.previewDirty = true; Snd.play('tick'); updateHUD(true);
   }
-  function toggleMap() { G.map = !G.map; Snd.play('tick'); updateHUD(true); }
-  $('clubPrev').addEventListener('click', () => { if (G.mode === 'aim') changeClub(-1); });
-  $('clubNext').addEventListener('click', () => { if (G.mode === 'aim') changeClub(1); });
+  // round 6: the map is look-only (drag pans, pinch zooms); it opens centred and unzoomed
+  function toggleMap() {
+    if (G.look) return;
+    G.map = !G.map; G.view = { px: 0, pz: 0, zoom: 1 }; G.press = null; G.aimDrag = null; G.aimCoast = null; G.vptr = null; G.pinch = null; G.beamT = 99;
+    Snd.play('tick'); updateHUD(true);
+  }
+  // round 6: the camera preset (Close, Standard, High) cycles from the bottom bar and is saved; it applies at address and on putts
+  function cycleCam() {
+    if (G.mode !== 'aim' || G.look) return;
+    const i = CAM_PRESETS.indexOf(camPreset()); save.settings.cam = CAM_PRESETS[(i + 1) % CAM_PRESETS.length]; persist();
+    Snd.play('tick'); updateHUD(true);
+  }
+  $('clubPrev').addEventListener('click', () => { if (G.mode === 'aim' && !G.look) changeClub(-1); });
+  $('clubNext').addEventListener('click', () => { if (G.mode === 'aim' && !G.look) changeClub(1); });
   $('btnMap').addEventListener('click', () => { if (G.mode === 'aim') toggleMap(); });
   $('btnPause').addEventListener('click', () => pause());
+  $('btnCam').addEventListener('click', cycleCam);
+  $('btnLook').addEventListener('click', toggleLook);
+  // hold to fast-forward (what a tap in flight does)
+  $('btnFF').addEventListener('pointerdown', (e) => { if (G.mode === 'flight') { G.ff = true; e.preventDefault(); } });
+  for (const t of ['pointerup', 'pointerleave', 'pointercancel']) $('btnFF').addEventListener(t, () => { G.ff = false; });
 
   /* =================== FX canvas (swing meter) =================== */
   // pin marker: a small flag glyph at a constant pixel size above the pin, when the camera is far from it
@@ -2999,6 +3316,61 @@
     fx.beginPath(); fx.moveTo(cx, cy - r0); fx.lineTo(cx, cy - r1); fx.stroke();
     fx.restore();
   }
+  // the address chevron's point (CSS px): under the ball, raised if a full pull from there would not fit above the bottom edge
+  function chevronAt() {
+    const H = FEEL.hint, bs = ballScreen(), L = swingLen();
+    return [bs[0], Math.max(bs[1] + 14, Math.min(bs[1] + H.below * VH, VH - H.fitPad - L))];
+  }
+  // a cream card (green left edge, like the HUD cards) centred on x with its bottom at y; lines: [text, font, colour, line px]
+  function fxCard(x, y, lines, a) {
+    fx.save(); fx.globalAlpha = a;
+    let w = 0; for (const l of lines) { fx.font = l[1]; w = Math.max(w, fx.measureText(l[0]).width); }
+    const lh = lines.map((l) => l[3]), H = lh.reduce((p, v) => p + v, 0) + 10, W = w + 20, x0 = Math.round(x - W / 2), y0 = Math.round(y - H);
+    fx.shadowColor = rgba(PALETTE.green, 0.28); fx.shadowOffsetY = 2; fx.shadowBlur = 2;
+    fx.fillStyle = css(PALETTE.cream); roundRect(x0, y0, W, H, 8); fx.fill();
+    fx.shadowColor = 'transparent'; fx.fillStyle = css(PALETTE.green); fx.fillRect(x0, y0 + 4, 3, H - 8);
+    let yy = y0 + 5;
+    for (const l of lines) { fx.font = l[1]; fx.fillStyle = l[2]; fx.textAlign = 'center'; fx.textBaseline = 'top'; fx.fillText(l[0], x0 + W / 2 + 1.5, yy); yy += l[3]; }
+    fx.restore();
+    return [x0, y0, x0 + W, y0 + H];
+  }
+  // look mode (round 6): over the full-power landing spot, the club's short name and, under it, the distance from there to the pin
+  function drawLookMarker() {
+    const P = lookSpot(), h = G.hole; _v.set(P.x, h.height(P.x, P.z), P.z).project(camera);
+    if (_v.z >= 1 || Math.abs(_v.x) > 1.1 || Math.abs(_v.y) > 1.1) { G.lookMarker = null; return; }
+    const x = (_v.x * 0.5 + 0.5) * VW, y = (0.5 - _v.y * 0.5) * VH, c = E.CLUBS[G.club], sn = CLUB_SHORT[c.id] || c.id;
+    const brand = 'italic 900 22px Fraunces, Georgia, serif', lab = '700 12px Archivo, system-ui, sans-serif';
+    const r = fxCard(x, y - 16, [[sn, brand, css(PALETTE.green), 24], [fmtD(Math.hypot(h.pin.x - P.x, h.pin.z - P.z)) + ' to pin', lab, css(PALETTE.green2), 15]], 1);
+    fx.save(); fx.strokeStyle = css(PALETTE.cream); fx.lineWidth = 2; fx.beginPath(); fx.moveTo(x, r[3]); fx.lineTo(x, y - 3); fx.stroke(); fx.restore();
+    G.lookMarker = { x, y, box: r };
+  }
+  // the distance label (round 6): rides just above the drawn ball in flight and on the roll; at rest the final distance holds
+  // restT s and fades. Along the ground from the start; yd (m) for full shots, ft (m) for putts
+  const DL = { text: '', d: 0, x: 0, y: 0, box: [0, 0, 0, 0], ball: [0, 0, 0], a: 0 }; let dlText = '', dlW = 0;
+  function drawDistLabel() {
+    G.distLabel = null;
+    const sh = G.shot, b = G.ball, F = FEEL.label;
+    if (!sh || !(G.mode === 'flight' || G.mode === 'settle') || G.pending || b.state === 'holed' || b.state === 'water') return;
+    const moving = G.mode === 'flight' && (b.state === 'air' || b.state === 'roll');
+    const a = moving ? 1 : 1 - E.smoothstep(F.restT, F.restT + F.fadeT, G.time - (G.trEnd != null ? G.trEnd : G.time));
+    if (a <= 0.01) return;
+    const bd = moving ? G.bd : b, d = Math.hypot(bd.x - sh.sx, bd.z - sh.sz), txt = sh.putt ? fmtFt(d) : fmtD(d);
+    camera.updateMatrixWorld();
+    _v.copy(ballMesh.position).project(camera); if (_v.z >= 1) return;
+    const x = (_v.x * 0.5 + 0.5) * VW, y = (0.5 - _v.y * 0.5) * VH;
+    // the drawn ball's radius on screen
+    const rv = ballMesh.scale.x, dist = camera.position.distanceTo(ballMesh.position), rpx = rv / Math.max(dist, 0.01) * VH / (2 * Math.tan(camera.fov * D2R / 2));
+    const yb = y - rpx - F.gap;
+    fx.save(); fx.globalAlpha = a;
+    fx.font = '700 ' + F.font + 'px Archivo, system-ui, sans-serif'; fx.textAlign = 'center'; fx.textBaseline = 'bottom';
+    if (txt !== dlText) { dlText = txt; dlW = fx.measureText(txt).width; }
+    fx.shadowColor = rgba(PALETTE.green, 0.9); fx.shadowBlur = 4; fx.fillStyle = css(PALETTE.cream);
+    fx.fillText(txt, x, yb);
+    fx.restore();
+    // what was drawn, for tests (one object, reused)
+    DL.text = txt; DL.d = d; DL.x = x; DL.y = yb; DL.box[0] = x - dlW / 2; DL.box[1] = yb - F.h; DL.box[2] = x + dlW / 2; DL.box[3] = yb; DL.ball[0] = x; DL.ball[1] = y; DL.ball[2] = rpx; DL.a = a;
+    G.distLabel = DL;
+  }
   function drawFX(dt) {
     fx.clearRect(0, 0, VW, VH);
     if (G.paused || !G.hole) return;
@@ -3006,20 +3378,26 @@
     const L = swingLen();
     drawFan(dt, L);
     const PL = PALETTE, cream = css(PL.cream), green = css(PL.green), yellow = css(PL.yellow), warn = css(PL.warn);
-    if (G.mode === 'aim' && !G.map && (save.shots || 0) < 12) {
-      // first-shots hint (round 5): a small cream chevron and the words, centred in the swing zone below the ball
-      const z = swingZone(), cx = VW * 0.5, cy = (z.top + z.bottom) / 2, H = FEEL.hint;
+    if (G.mode === 'aim' && !G.map && !G.look) {
+      // round 6: the chevron under the ball at every address (the only hint), where a full pull from it fits above the bottom
+      // edge; the words under it for the first textShots shots
+      const H = FEEL.hint, c = chevronAt(), cx = c[0], cy = c[1];
       fx.save();
       fx.globalAlpha = 0.6 + 0.12 * Math.sin(G.time * 2.5);
       fx.shadowColor = rgba(PL.green, 0.7); fx.shadowBlur = 4;
       fx.strokeStyle = cream; fx.lineWidth = 2.5; fx.lineCap = 'round'; fx.lineJoin = 'round';
       const bob = H.bob * Math.sin(G.time * 3);
       fx.beginPath(); fx.moveTo(cx - H.chev, cy - 8 + bob); fx.lineTo(cx, cy - 8 + H.chev * 0.7 + bob); fx.lineTo(cx + H.chev, cy - 8 + bob); fx.stroke();
-      fx.globalAlpha = 0.9; fx.fillStyle = cream;
-      fx.font = '700 11px Archivo, system-ui, sans-serif'; fx.textAlign = 'center';
-      fx.fillText('PULL DOWN · FLICK UP', cx, cy + H.chev + 10);
+      if ((save.shots || 0) < H.textShots) {
+        fx.globalAlpha = 0.9; fx.fillStyle = cream;
+        fx.font = '700 11px Archivo, system-ui, sans-serif'; fx.textAlign = 'center';
+        fx.fillText('PULL DOWN · FLICK UP', cx, cy + H.chev + 10);
+      }
       fx.restore();
     }
+    G.lookMarker = null;
+    if (G.look && G.mode === 'aim' && !isPutter()) drawLookMarker();
+    drawDistLabel();
     if (G.mode === 'swing' && G.swing) {
       // round 5: no meter, guide track, trail or finger dot over the play area (power shows in the lie card). The start line stays
       const s = G.swing;
@@ -3051,7 +3429,41 @@
 
   /* =================== HUD =================== */
   let hudT = 0;
-  function showHUD(on) { $('hudTop').hidden = !on; $('hudBot').hidden = !on; }
+  // round 6: which HUD parts show. In flight (to the next address) the strip replaces the top cards; look mode hides everything
+  // but the look button; fast-forward only while the ball moves
+  let hudOn = false;
+  function showHUD(on) { hudOn = on; hudVis(); }
+  function hudVis() {
+    const on = hudOn, m = G.mode, look = !!G.look;
+    const strip = on && !!(G.shot && G.shot.stats) && (m === 'flight' || m === 'settle');
+    hudSet('hudTop', 'hidden', !(on && !look && !strip));
+    hudSet('hudStats', 'hidden', !strip);
+    hudSet('hudBot', 'hidden', !(on && !look));
+    // the look button stands on the horizon, where a leaning beam's far end or a moving camera's landing spot can pass, so it
+    // shows once the address view has settled and the beam has faded (and always in look mode)
+    const B = FEEL.beam, still = G.camLock && !G.aimDrag && !G.aimCoast && (G.beamT == null || G.beamT >= B.holdT + B.fadeT);
+    hudSet('btnLook', 'hidden', !(on && m === 'aim' && !G.map && (look || still)));
+    hudSet('btnFF', 'hidden', !(on && m === 'flight' && (G.ball.state === 'air' || G.ball.state === 'roll')));
+    hudSet('btnCam', 'hidden', m !== 'aim' && m !== 'swing');   // the camera preset only matters at address (and keeps the low toast slot clear)
+  }
+  // the flight strip's values, set once at contact. Putts: power as the flat roll, and through
+  function angTxt(v) { if (v == null || !isFinite(v)) return '–'; const r = Math.round(v); return Math.abs(r) + '°' + (r > 0 ? 'R' : r < 0 ? 'L' : ''); }
+  function unitHtml(t) { const i = t.lastIndexOf(' '); return i < 0 ? t : t.slice(0, i) + '<small>' + t.slice(i + 1) + '</small>'; }
+  function fillStats() {
+    const st = G.shot && G.shot.stats; if (!st) return;
+    for (const id of ['stSpeed', 'stBack', 'stTempo']) hudSet(id, 'hidden', st.putt);
+    if (st.putt) hudSet('stPowerV', 'html', unitHtml(fmtFt(st.roll)));
+    else {
+      hudSet('stSpeedV', 'html', Math.round(st.speed) + '<small>mph</small>');
+      hudSet('stPowerV', 'html', Math.round(st.power) + '<small>%</small>');
+      hudSet('stPowerV', 'class', 'brandtxt num' + (st.power > 100.5 ? ' warn' : ''));
+      hudSet('stBackV', 'text', angTxt(st.back));
+      hudSet('stTempoV', 'text', st.slow ? 'SLOW' : 'OK');
+      hudSet('stTempoV', 'class', 'brandtxt num' + (st.slow ? ' warn' : ''));
+    }
+    if (st.putt) hudSet('stPowerV', 'class', 'brandtxt num');
+    hudSet('stThruV', 'text', angTxt(st.through));
+  }
   // the HUD refreshes about 8 times a second; the DOM is only touched when a value changed
   const hudLast = {};
   function hudSet(id, key, v) {
@@ -3074,9 +3486,15 @@
     hudSet('liePw', 'hidden', !on);
     if (!on) return;
     const pw = Math.min(G.swing ? G.swing.power : G.pendingShot.power, 1.12), club = E.CLUBS[G.club];
-    hudSet('pwPct', 'text', Math.round(pw * 100) + '%');
     hudSet('pwPct', 'class', 'brandtxt num' + (pw > 1 ? ' over' : ''));
-    hudSet('pwCarry', 'text', club.putter ? fmtShort(pw * E.puttMax(distToPin())) : fmtD(E.carryFor(club, pw) * lieMul(club, G.lie) * (1 + 0.022 * save.upg.power)));
+    if (club.putter) {
+      // round 6: the flat roll this pull gives (big) and, smaller, the last putt on this hole
+      hudSet('pwPct', 'text', fmtFt(puttRoll(pw)));
+      hudSet('pwCarry', 'text', G.lastPutt != null ? 'last ' + fmtFt(G.lastPutt) : '');
+    } else {
+      hudSet('pwPct', 'text', Math.round(pw * 100) + '%');
+      hudSet('pwCarry', 'text', fmtD(E.carryFor(club, pw) * lieMul(club, G.lie) * (1 + 0.022 * save.upg.power)));
+    }
   }
   function updateHUD(force) {
     if (!G.hole || !G.round) return;
@@ -3123,22 +3541,25 @@
     const c = E.CLUBS[G.club];
     const sn = CLUB_SHORT[c.id] || c.id;
     hudSet('clubName', 'html', /^\d[A-Z]$/.test(sn) ? sn[0] + '<i>' + sn[1] + '</i>' : sn);
-    hudSet('clubCarry', 'text', c.putter ? fmtShort(E.puttMax(d)) : fmtD(effCarry(c)));
+    hudSet('clubCarry', 'text', c.putter ? fmtFt(puttRoll(1)) : fmtD(effCarry(c)));   // round 6: putter: the full-pull roll
     hudSet('btnMap', 'class', 'rbtn map' + (G.map ? ' on' : ''));
     hudSet('btnMap', 'aria-pressed', G.map ? 'true' : 'false');
-    hudSet('maphint', 'hidden', !(G.map && G.mode === 'aim'));
-    if (G.map && G.mode === 'aim') hideTransients('maphint');   // one card at a time (round 5)
+    // round 6: camera preset, look button (on the address view's horizon, below the top cards)
+    hudSet('camName', 'text', CAM_NAMES[camPreset()]);
+    hudSet('btnLook', 'class', 'rbtn look' + (G.look ? ' on' : ''));
+    hudSet('btnLook', 'aria-pressed', G.look ? 'true' : 'false');
+    if (G.mode === 'aim' && !G.look) hudSet('btnLook', 'style', 'top:' + Math.round(clamp(addrHorizonY(), FEEL.look.btnY[0], FEEL.look.btnY[1]) * VH - 26) + 'px');
+    hudVis();
     const interactive = G.mode === 'aim';
     hudSet('hudBot', 'opacity', interactive ? 1 : G.mode === 'swing' ? FEEL.hudSwingDim : 0.45);
     pEnd('updateHUD');
   }
 
   let toastTimer = 0;
-  // one transient card at a time (round 5): a new toast, score popup or map hint replaces whatever is showing
+  // one transient card at a time (round 5): a new toast or score popup replaces whatever is showing (round 6: no map hint)
   function hideTransients(keep) {
     if (keep !== 'toast') { $('toast').classList.remove('show'); clearTimeout(toastTimer); }
     if (keep !== 'banner') { $('banner').classList.remove('show'); clearTimeout(bannerTimer); }
-    if (keep !== 'maphint' && !$('maphint').hidden) { $('maphint').hidden = true; hudLast['maphint.hidden'] = true; }
   }
   // slot 'low' (round 5): the contact toast sits above the bottom buttons, under the ball's start, because the ball climbs
   // through the band under the HUD cards in flight; every other toast uses that band
@@ -3377,10 +3798,11 @@
     $('pSoundV').textContent = save.settings.sound ? 'On' : 'Off';
     $('pGuideV').textContent = save.settings.guide ? 'On' : 'Off';
     $('pPerfV').textContent = save.settings.perf ? 'On' : 'Off';
+    sizeInfoDirty();
   }
   function pause() {
     if (!G.round) return;
-    G.paused = true; G.swing = null; if (G.mode === 'swing') G.mode = 'aim';
+    G.paused = true; G.swing = null; G.press = null; G.aimDrag = null; if (G.mode === 'swing') G.mode = 'aim';
     quitArm = false; $('pQuit').textContent = 'Quit round';
     $('pauseSub').textContent = roundTitle(G.def) + ' · Hole ' + (G.holeIdx + 1);
     renderPause(); showHUD(false); showScreen('scrPause');
@@ -3429,5 +3851,9 @@
       touchDt: G.swing ? G.swing.touchDt : null, ipAlpha: G.ipAlpha, ballDrawn: { x: G.bd.x, y: G.bd.y, z: G.bd.z },
       phi: G.phi, beta: G.beta, ballVis: G.ballVis || 0, fanA: G.fanA || 0, flexG: CV.flexG, flexTau: CV.flexTau, addr: G.club != null ? addrFor(G.club) : null,
       camSpring: { omega: cam.k * FEEL.cam.kToOmega, vel: cam.vel.toArray(), lookVel: cam.lvel.toArray(), orbit: G.camOrbit ? G.camOrbit.t : null } }), Snd, greenTint, camera, ADDR, PALETTE, clubModels, snap: camHardSet, lieDecal, lieMesh, showToast, showBanner, showCard, finishRound, world, nextShot, pathMap, ballMesh,
-    addrFor, swingZone, swingLen, hVis, visOff, flickTan, ballScreen };
+    addrFor, swingLen, hVis, visOff, flickTan, ballScreen, sizeInfo, size: () => ({ VW, VH, DPR }),
+    // round 6: the gesture decision, look mode, camera preset, putt curve, flight strip and label
+    gesture: () => G.gesture, pressDecide, look: () => (G.look ? { phase: G.look.phase, t: G.look.t, px: G.look.px, pz: G.look.pz, zoom: G.look.zoom } : null), lookLast: () => G.lookLast || null,
+    lookMarker: () => G.lookMarker || null, toggleLook, toggleMap, cycleCam, camPreset, addrHorizonY, addrBallK, chevronAt, puttRoll, puttPull, fmtFt,
+    updateHUD, stats: () => (G.shot ? G.shot.stats : null), distLabel: () => G.distLabel || null, beamT: () => G.beamT, beamOn: () => beam.mesh.visible, aimCoast: () => G.aimCoast, camYaw: () => G.camYaw, smashFor, ADDRESS: { addrTarget, lookTarget } };
 })();

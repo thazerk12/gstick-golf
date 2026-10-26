@@ -27,6 +27,9 @@ const OUTF = process.argv[3] || OUT + '/swing2.json';
   await page.waitForFunction(() => window.__tempo && window.__tempo.G.mode === 'menu', null, { timeout: 180000 });
   if (process.env.FEEL) await page.evaluate((j) => { const F = window.__tempo.FEEL, o = JSON.parse(j); for (const k in o) { if (typeof o[k] === 'object' && !Array.isArray(o[k])) { for (const q in o[k]) { if (typeof o[k][q] === 'object') Object.assign(F[k][q], o[k][q]); else F[k][q] = o[k][q]; } } else F[k] = o[k]; } }, process.env.FEEL);
 
+  if (process.env.Y0) await page.evaluate((y) => { window.__Y0 = y; }, +process.env.Y0);
+  // Y0FROM=<an earlier result file>: the same start line per run as that build used (round 5's zone moved it per run)
+  if (process.env.Y0FROM) await page.evaluate((l) => { window.__Y0L = l; }, JSON.parse(fs.readFileSync(process.env.Y0FROM, 'utf8')).results.map(r => r.y0));
   if (process.env.TRACE) await page.evaluate((t) => { const p = t.split(','); window.__TR = [p[0], +p[1], +p[2], +p[3]]; }, process.env.TRACE);
   const res = await page.evaluate(() => {
     const T = window.__tempo, G = T.G, CV = T.CV, E = T.E, sim = window.__sim;
@@ -78,7 +81,7 @@ const OUTF = process.argv[3] || OUT + '/swing2.json';
       while (k < 600) {
         const ts = now() + 1 / 60;
         if (!down && ts >= t0) { ev('pointerdown', X, Y0, t0); down = true; }
-        else if (down && G.swing && ts > t0) {
+        else if (down && (G.swing || G.press) && ts > t0) {   // round 6: a press is decided after 10 px of movement
           const before = G.mode, y = yAt(ts);
           ev('pointermove', X, y, ts);
           // the 3 px reversal sample, found from the finger path itself so it is the same for every build
@@ -102,10 +105,10 @@ const OUTF = process.argv[3] || OUT + '/swing2.json';
     for (const [name, ci] of [['driver', 0], ['7-iron', i7]]) for (const [T, hold] of [[120, 0], [200, 0], [300, 0], [200, 500]]) for (const phase of [0, 4, 8, 12, 16]) {
       R.k = 3000 * (++runIdx);   // every run starts at the same clock time in every build, so finger samples are bit-identical
       putAt(0, 0.6, ci);
-      { const TT = window.__tempo; if (TT.swingZone) Y0 = Math.max(560, Math.ceil(TT.swingZone().top) + 8); }   // (T is the upstroke time inside this loop)
+      { const TT = window.__tempo; if (window.__Y0L) Y0 = window.__Y0L[runIdx - 1]; else if (window.__Y0) Y0 = window.__Y0; else if (TT.swingZone) Y0 = Math.max(560, Math.ceil(TT.swingZone().top) + 8); }   // round 6: Y0=<px> forces the start line (the same finger path in every build)
       const o = run({ T, hold, phase });
       const sub = o.sub, tc = o.tContact;
-      if (tc == null || o.tRev == null) { results.push({ club: name, T, hold, phase, error: 'no contact or no reversal', tRev: o.tRev, tFire: o.tFire, tCross: o.tCross, tBall: o.tBall, nsub: sub.length, lastFrames: o.frames.slice(-3), mode: G.mode }); for (let i = 0; i < 20; i++) frame(); continue; }
+      if (tc == null || o.tRev == null) { results.push({ club: name, T, hold, phase, y0: Y0, error: 'no contact or no reversal', tRev: o.tRev, tFire: o.tFire, tCross: o.tCross, tBall: o.tBall, nsub: sub.length, lastFrames: o.frames.slice(-3), mode: G.mode }); for (let i = 0; i < 20; i++) frame(); continue; }
       // top: highest arm angle from the reversal sample to contact
       let iTop = -1, aTop = -1e9;
       for (let i = 0; i < sub.length; i++) if (sub[i][0] >= (o.tRev || 0) - 0.05 && sub[i][0] <= tc && sub[i][2] > aTop) { aTop = sub[i][2]; iTop = i; }
@@ -129,7 +132,7 @@ const OUTF = process.argv[3] || OUT + '/swing2.json';
       let pk = 0; for (const s of sub) if (Math.abs(s[4]) > Math.abs(pk)) pk = s[4];
       const iFin = sub.findIndex(s => s[1] === 'finish'), tFin = iFin >= 0 ? sub[iFin][0] : null;
       let settle = 0; if (tFin != null) for (const s of sub) if (s[0] >= tFin + 0.6) settle = Math.max(settle, Math.abs(s[4]));
-      results.push({ club: name, T, hold, phase,
+      results.push({ club: name, T, hold, phase, y0: Y0,
         leaveTopMs: (tTop - o.tRev) * 1000, startsDownMs: tDown == null ? null : (tDown - o.tRev) * 1000, revAfterUpstrokeMs: (o.tRev - (o.tCross - T / 1000)) * 1000,
         aTop, gapDeg: o.gap, leftPct: 100 * o.gap / aTop,
         signChangesA: signs(1), signChangesAB: signs(2), flipsAt, longestSlowFrames: worst,
