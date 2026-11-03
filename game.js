@@ -195,8 +195,8 @@
   };
   Strip.prototype.end = function () { this.geo.setDrawRange(0, this.n * 6); this.attr.needsUpdate = true; this.mesh.visible = this.n > 0; };
 
-  // shot tracer: a soft yellow glow under a bright core (round 4: no edge). Two ribbon meshes (glow, then core) with
-  // per-vertex colour and alpha; every buffer is sized once for TR_MAX points and rewritten in place
+  // shot tracer: one core ribbon (round 4: no edge; round 7: no glow) with per-vertex colour and alpha; every buffer is sized
+  // once for TR_MAX points and rewritten in place
   const TR_MAX = 1500;
   const matTrace = new THREE.ShaderMaterial({
     uniforms: { uFade: { value: 1 } }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
@@ -214,12 +214,12 @@
     const mesh = new THREE.Mesh(geo, mat || matTrace); mesh.frustumCulled = false; mesh.renderOrder = order; mesh.visible = false; scene.add(mesh);
     return { mesh, geo, pos, col, al, pa, ca, aa, across, perSeg: quads.length * 6 };
   }
-  // glow: left edge, centre, right edge. core: one band, left to right
-  const trGlow = traceRibbon(3, [[0, 1], [1, 2]], 6), trCore = traceRibbon(2, [[0, 1]], 6.5);
+  // core: one band, left to right (round 7: the glow ribbon under it is gone)
+  const trCore = traceRibbon(2, [[0, 1]], 6.5);
   const TRP = { x: new Float32Array(TR_MAX), y: new Float32Array(TR_MAX), z: new Float32Array(TR_MAX), cum: new Float32Array(TR_MAX) };
-  const tracer = { n: 0, pure: null, begin() { this.n = 0; }, end() { trGlow.mesh.visible = trCore.mesh.visible = false; this.n = 0; } };
+  const tracer = { n: 0, pure: null, begin() { this.n = 0; }, end() { trCore.mesh.visible = false; this.n = 0; } };
   // aim beam (round 6, replaces the always-on aim line and the live landing ring): a soft cream ribbon, alpha per vertex (0 at
-  // both edges, so they are soft), faded as a whole by uFade. Same three-across ribbon as the tracer's glow
+  // both edges, so they are soft), faded as a whole by uFade. Same three-across ribbon the tracer's glow used (gone in round 7)
   const matBeam = new THREE.ShaderMaterial({
     uniforms: { uFade: { value: 1 }, uCol: { value: new THREE.Color(PALETTE.cream) } }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -20,
@@ -1252,7 +1252,7 @@
     // out of the swing plane, as a share of the in-plane bend (so the bend reads from behind the ball)
     flex: { omega: 42, zeta: 0.2, alphaTau: 0.01, alphaMax: 900, releaseLead: 0.046, releaseWidth: 0.006, releaseHold: 0.08, releaseBack: 0.12, droop: 0.5,
       c: { driver: 2.3e-4, wood: 1.7e-4, iron: 1.21e-4, wedge: 0.924e-4, putter: 0 } },   // round 5: woods 2x round 4, irons 2.2x (peak tip <= 0.20 m driver, <= 0.10 m irons)
-    tempoLift: 6,                                          // px: the downswing clock starts at the last sample this close to the lowest point
+    tempoLift: 7.68,                                       // px: the downswing clock starts at the last sample this close to the lowest point (round 7: 6 x 1.28, with the pull)
     // sounds. Impacts: noise burst (0.3 ms attack, `burst` s) through resonant bandpass modes [Hz, Q, gain]; `decay` = time to
     // -40 dB; `crack` = a direct high-passed click; `gain` = level at full strike. Turf, sand and rough are filtered noise.
     sound: {
@@ -1281,10 +1281,25 @@
     // An engine capture point outside the wall is eased back inside at no more than `push` m/s (never a jump)
     holeOut: { depth: 0.102, wallE: 0.3, poleE: 0.3, poleR: 0.0125, bottomE: 0.3, bottomFric: 0.4, rollTau: 0.07, settle: 0.6, push: 0.6, hitMin: 0.02, rattleMin: 0.1, rattleGap: 0.04, step: 0.001 },   // hitMin: slower wall contact is rolling along it
     ballCapEase: 0.3,                                      // s: ball size cap transition
-    tracer: { wPerM: 0.004, wMin: 0.025, wMax: 1.6, start: 0.3, glow: 2.2, glowA: 0.45, coreA: 0.94, headBoost: 1.0, ballMax: 0.8, hold: 0.7, fade: 0.6 },   // half-width per m from the camera (min, max m); start taper; glow width x core; alphas; head boost; core at the ball <= ballMax x ball diameter; s (round 4: no edge, hold 1.2 -> 0.7)
-    // swingLen = len x height, clamped to lenMin..lenMax px (round 5). Power stays linear in the pull (the same 112% cap). Round 6:
-    // no zone; any press can start a swing (FEEL.gesture)
-    swingZone: { len: 0.25, lenMin: 140, lenMax: 260 },
+    ballGreenK: 1.25,                                      // round 7: the ball's drawn size on the green and during putts (x real; 1 in round 6)
+    tracer: { wPerM: 0.004, wMin: 0.025, wMax: 1.6, start: 0.3, coreA: 0.5, headBoost: 0.25, ballMax: 0.8, hold: 0.7, fade: 0.6 },   // half-width per m from the camera (min, max m); start taper; core alpha, x(1 + headBoost) at the flying ball; core at the ball <= ballMax x ball diameter; s (round 4: no edge, hold 1.2 -> 0.7; round 7: no glow, coreA 0.94 -> 0.5, headBoost 1.0 -> 0.25)
+    // swingLen = len x height, clamped to lenMin..lenMax px (round 5). Round 6: no zone; any press can start a swing (FEEL.gesture).
+    // Round 7: a longer pull for full power, 25% -> 32% of the height (lenMin / lenMax x 1.28 too: 140 / 260 px in round 6)
+    swingZone: { len: 0.32, lenMin: 179.2, lenMax: 332.8 },
+    // round 7: power from the pull fraction f = pull / swingLen on full swings: f^exp up to 1 (exp 1 = linear, as round 6), then
+    // linear to the same 1.12 cap at the same full-overswing pull (f 1.12). Putts keep power = f (their roll is dMax x f^2)
+    power: { exp: 1.25 },
+    // tempo (lift to the start line, full swings): at most `slow` s is OK; past it the shot loses perS per s, to at least `min`.
+    // Round 7: slow and perS scaled by the pull's 1.28 so the same thumb speed scores the same (round 6: 0.34 s, 0.75 /s)
+    tempo: { slow: 0.4352, perS: 0.5859375, min: 0.6 },
+    // round 7 live ring while pulling (Landing guide on): cream, warn past 100%, gone at contact. Full swings: at the carry for
+    // this pull, radius k x carry m (rMin..rMax). Putts: at the flat roll, radius puttR m. Its points are draped on the course
+    // (the drawn green on putts), `lift` / `puttLift` m up, and drawn on the overlay canvas as a linePx line with a soft dark edge
+    // (edgeA, edgeBlur px), so it reads from a low camera: at least minPx px across, and never flatter than minAspect (height /
+    // width; its centre stays put). Its radius is at most `clear` x its distance, so it sits past the ball; it is clipped away
+    // from the ball's disc (+ ballPad px) so it never covers it; hidden under minD m (putts puttMinD m)
+    ring: { k: 0.028, rMin: 1.5, rMax: 7, lift: 0.05, minD: 1.5, puttR: 0.2, puttLift: 0.005, puttMinD: 0.3,
+      minPx: 14, minAspect: 0.3, linePx: 2.5, edgeA: 0.75, edgeBlur: 3, ballPad: 2, clear: 0.45, alpha: 0.95 },
     // round 6 gestures: a one-finger press anywhere but a button waits for decidePx of movement; within swingDeg of straight
     // down it is a swing (the press point is the start line), anything else turns the aim. A tap does nothing in aim
     gesture: { decidePx: 10, swingDeg: 35 },
@@ -1307,7 +1322,7 @@
       btnY: [0.3, 0.62] },   // the look button's centre: on the address view's horizon, kept between these shares of the height
     // address chevron (round 6): under the ball (`below` x height down), moved up if a full pull from there wouldn't fit above
     // the bottom edge (fitPad px); half-width and bob in px; "PULL DOWN · FLICK UP" under it for the first textShots shots
-    hint: { chev: 9, bob: 3, below: 0.05, fitPad: 8, textShots: 3 },
+    hint: { chev: 9, bob: 3, below: 0.05, fitPad: 8, fitK: 1.12, textShots: 3 },   // round 7: the chevron sits where a fitK x swingLen pull fits
     // putting (round 6): one curve. Flat roll = dMax x p^2 m, p = pull / swingLen (to the 1.12 cap); E.puttSpeed turns it into
     // the ball speed for this green's stimp. No tempo penalty on putts
     putt: { dMax: 24 },
@@ -1319,13 +1334,14 @@
     hudSwingDim: 0.4,                                       // bottom buttons' opacity while swinging (round 5)
     fontWait: 1.5,                                         // s: longest wait for the brand face before the game starts without it
     pinMarker: { far: 60, near: 40, h: 18 },               // flag glyph over the pin: full above `far` m from the camera, gone under `near`; px tall
-    club: { shaftR: [0.0126, 0.0075], gripR: [0.019, 0.0146], putterGripR: [0.022, 0.0177], head: 1.25, headWood: 1.35, headH: { wood: 0.5, iron: 0.65, putter: 0.6 }, seg: 8,
+    club: { shaftR: [0.0126, 0.0075], gripR: [0.019, 0.0146], putterGripR: [0.022, 0.0177], head: 1.25, headWood: 1.35, headH: { wood: 0.5, iron: 0.65, putter: 0.5 }, putterNeckX: 0.03, seg: 8,   // round 7: putter 0.6 -> 0.5, neck 0.014 -> 0.03 m toward the heel
       // driver and woods (round 4): outline points [u, v] in (L, Dp) from the toe-face corner round the face, heel, back and toe;
       // the first faceN segments are the face. Rings: [scale toward the crown centre, height x Hh]. mark: [z0, z1 (x Dp), y0, y1 (x Hh), width m]
       wood: { outline: [[-0.46, -0.03], [-0.3, 0.008], [-0.1, 0.016], [0.1, 0.016], [0.28, 0.008], [0.43, -0.035], [0.51, -0.16], [0.53, -0.34], [0.48, -0.55], [0.35, -0.75], [0.14, -0.88], [-0.1, -0.89], [-0.31, -0.78], [-0.45, -0.58], [-0.5, -0.32]],
         faceN: 6, crown: [0.01, -0.45], sole: 0.9, skirt: 0.32, edge: [0.985, 0.62], line: [0.955, 0.7], c1: [0.78, 0.88], c2: [0.45, 0.97], bulgeZ: 0.016,
         mark: [-0.1, -0.3, 0.905, 0.985, 0.006], hosel: [0.44, 0.62, -0.1] } },   // m: shaft and grip radii (top, bottom); head scale (woods: headWood); head height factor by class (keeps the ball visible at address); radial segments
-    green: { tintA: 0.14, tintH: 0.2, stripeAlpha: 0.35,  // height tint: x(1 + tintA*tanh((y - pin.y)/tintH)); stripes 1.7-1.9% contrast by theme
+    swingSteep: { deg: [17, 14, 10, 6, 4], from: 0, to: 0.35 },   // round 7, drawing only: DR, 3W, 4H, 5I, 6I swing on a plane this many degrees steeper, eased in over club angle / aTop from..to (0 at address and contact)
+    green: { tintA: 0.30, tintH: 0.10, stripeAlpha: 0.35,   // round 7 tint: 0.30 / 0.10 (round 6: 0.14 / 0.2; the brief's start 0.15 gave 1.9-2.2x the spread)  // height tint: x(1 + tintA*tanh((y - pin.y)/tintH)); stripes 1.7-1.9% contrast by theme
       // round 5, drawing only: the green's height difference from the cup is drawn `relief` times larger (weight w: 1 on the
       // green, 0 at the fringe's outer edge); a ball fades out of it between reliefFade[0] and [1] m above the surface.
       // Slope grid: cream lines every gridGap m, gridW CSS px wide, gridA opacity, on the exaggerated surface
@@ -1476,9 +1492,10 @@
       const body = new THREE.ExtrudeGeometry(sh, { depth: Hh, bevelEnabled: false, curveSegments: 4 });
       body.rotateX(-Math.PI / 2);
       H.push([body, PL.green]);                                                                                  // green mallet
-      H.push([boxAt(0.092, 0.016, 0.0018, 0, 0.012, 0.0006), PL.green2]);                                        // face insert
+      const Hi = Math.min(0.016, Hh * 0.9);                                                                       // round 7: the insert no taller than the body
+      H.push([boxAt(0.092, Hi, 0.0018, 0, Hi / 2 + 0.002, 0.0006), PL.green2]);                                  // face insert
       for (const x of [-0.0058, 0.0058]) H.push([boxAt(0.0026, 0.0008, 0.058, x, Hh + 0.0003, -0.036), PL.cream]);   // sight lines
-      const base = new V3(0.014, Hh - 0.002, -0.009);
+      const base = new V3(K.putterNeckX, Hh - 0.002, -0.009);   // round 7: the neck at the heel, clear of the ball from behind
       H.push([neckGeo(base, shaftDir, 0.056, 0.0056, 0.005, SEG), PL.cream2]);
       Ph = base.clone().addScaledVector(shaftDir, 0.056);
       cp = new V3(0, E.BALL_R, 0);
@@ -1556,15 +1573,20 @@
     curClub = clubModels[i]; planeG.add(curClub.grp);
     const sp = curClub.sp; CV.spec = sp; CV.ci = i;
     CV.flexC = FEEL.flex.c[flexClass(i)]; CV.bend = 0; CV.bendV = 0; CV.flexInit = false;
-    const th = sp.th * D2R, s = Math.sin(th), c = Math.cos(th);
-    // clubRoot sits at the ball centre: +z down the target line, +x toward the golfer (right-handed stance)
-    const e1 = new V3(0, 0, 1), e2 = new V3(c, s, 0), e3 = new V3().crossVectors(e1, e2);
     // hands at address put the face's contact point just behind the ball; the swing centre is an arm's length above them
     const hands0 = new V3(-(E.BALL_R + 0.003), 0, 0).sub(curClub.cp);
     const C = hands0.clone(); C.y += sp.rArm;
+    CV.planeC = C; CV.steep = FEEL.swingSteep.deg[i] || 0; CV.stD = 0; setPlane(sp.th);
+    pEnd('setupClub');
+  }
+  // the swing plane at thDeg from the ground, turned about the target line through the ball
+  const _pe1 = new V3(), _pe2 = new V3(), _pe3 = new V3();
+  function setPlane(thDeg) {
+    const th = thDeg * D2R, s = Math.sin(th), c = Math.cos(th), C = CV.planeC;
+    // clubRoot sits at the ball centre: +z down the target line, +x toward the golfer (right-handed stance)
+    const e1 = _pe1.set(0, 0, 1), e2 = _pe2.set(c, s, 0), e3 = _pe3.crossVectors(e1, e2);
     planeG.position.set(0, 0, 0).addScaledVector(e1, C.x).addScaledVector(e2, C.y).addScaledVector(e3, C.z);
     planeG.quaternion.setFromRotationMatrix(_m4.makeBasis(e1, e2, e3));
-    pEnd('setupClub');
   }
   function resetClub() { Object.assign(CV, { a: 0, v: 0, b: 0, phase: 'address', t: 0, alpha: 0, alphaT: 0, shot: null, hit: false, bend: 0, bendV: 0, flexInit: false, tau: 0, hitSince: null }); }
   // swing path mapping (FEEL.path): finger drift as a fraction of swingLen -> path value (+ = drift right). dev = -pathMap(f)
@@ -1618,8 +1640,9 @@
             Snd.whooshStart(Math.min(s.power, 1));
           }
         }
-        if (sp.type === 'putter') springTo(Math.min(s.power, 1.12) * sp.aTop, FEEL.back.putterOmega, dt);
-        else springTo(Math.min(s.power, 1.12) * sp.aTop, FEEL.back.omega, dt, FEEL.back.zeta);
+        // the club follows the finger: its backswing is the pull fraction (round 7: the shot's power is curved, the club is not)
+        if (sp.type === 'putter') springTo(Math.min(s.pull, 1.12) * sp.aTop, FEEL.back.putterOmega, dt);
+        else springTo(Math.min(s.pull, 1.12) * sp.aTop, FEEL.back.omega, dt, FEEL.back.zeta);
         const bT = sp.bTop * E.smoothstep(FEEL.back.hingeFrom, FEEL.back.hingeTo, CV.a / sp.aTop);
         // back from an aborted downswing: the wrists ease onto the backswing hinge instead of snapping
         if (CV.bBack) { CV.b += (bT - CV.b) * (1 - Math.exp(-dt / FEEL.down.bEase)); if (Math.abs(bT - CV.b) < 0.1) CV.bBack = false; }
@@ -1745,8 +1768,15 @@
     if (CV.phase === 'address' || CV.phase === 'back') { CV.alphaT = 0; CV.alpha *= Math.exp(-dt * 6); }
     else CV.alpha += (CV.alphaT - CV.alpha) * (1 - Math.exp(-dt / FEEL.path.tiltTau));
     const P = CV.shot || G.ball, sp = CV.spec, a = CV.a * D2R, b = CV.b * D2R;
-    clubRoot.position.set(P.x, P.y + visOff(P.x, P.z, 0), P.z);   // round 5: on the green's drawn relief
-    clubRoot.rotation.set(0, (CV.shot ? CV.shot.yaw : addrYaw()) - CV.alpha * 0.07, 0);   // round 6: the camera's yaw at address
+    // round 7: on putts the face meets the drawn ball. A ball drawn k x real (its bottom on the ground) is wider at the contact
+    // height R by R(sqrt(2k - 1) - 1), so the putter sits that much further back; the stroke keeps the address value
+    const yaw = CV.shot ? CV.shot.yaw : addrYaw(), cOff = CV.shot ? (CV.shot.off || 0) : clubBack();
+    clubRoot.position.set(P.x - Math.sin(yaw) * cOff, P.y + visOff(P.x, P.z, 0), P.z - Math.cos(yaw) * cOff);   // round 5: on the green's drawn relief
+    clubRoot.rotation.set(0, yaw - CV.alpha * 0.07, 0);   // round 6: the camera's yaw at address
+    // round 7 Task 4, drawing only: the long clubs (FEEL.swingSteep) go back and down on a steeper plane, eased in from the
+    // takeaway and back out by contact, so address, contact and the follow-through are drawn as before
+    const stD = CV.steep && CV.a > 0 ? CV.steep * E.smoothstep(FEEL.swingSteep.from, FEEL.swingSteep.to, CV.a / sp.aTop) : 0;
+    if (stD !== CV.stD) { CV.stD = stD; setPlane(sp.th + stD); }
     curClub.grp.position.set(-sp.rArm * Math.sin(a), -sp.rArm * Math.cos(a), 0);
     curClub.grp.rotation.set(0, 0, -(a + b));
     applyFlex(curClub, CV.bend);
@@ -1951,6 +1981,9 @@
       vv: vv ? [Math.round(vv.width), Math.round(vv.height)] : null, safe: { top: px(ps.paddingTop), right: px(ps.paddingRight), bottom: px(ps.paddingBottom), left: px(ps.paddingLeft) },
       dpr: window.devicePixelRatio || 1, gl: renderer.getPixelRatio(), size: [VW, VH], canvas: [glc.width, glc.height] };
   }
+  // the bottom safe-area inset (CSS px), read from #safeProbe once per size change
+  let sbKey = '', sbVal = 0;
+  function safeBottom() { const k = VW + 'x' + VH; if (k !== sbKey) { sbKey = k; sbVal = parseFloat(getComputedStyle($('safeProbe')).paddingBottom) || 0; } return sbVal; }
   function sizeInfoDirty() {
     const el = $('sizeInfo'); if (!el) return;
     el.hidden = !save.settings.perf; if (el.hidden) return;
@@ -2079,7 +2112,7 @@
     if (fAbs <= FEEL.path.pure && power <= 1.0 && tempoMul >= 0.96 && Math.abs(dev) < 0.12) { dev *= 0.3; perfect = true; }
     G.prevPos = { x: b.x, z: b.z, lie: G.lie };
     if (CV.ci !== G.club) setupClub(G.club);
-    CV.shot = { x: b.x, y: b.y, z: b.z, yaw: G.aim };
+    CV.shot = { x: b.x, y: b.y, z: b.z, yaw: G.aim, off: clubBack() };
     if (CV.phase !== 'follow') setFollow(power);
     const shotLie = G.lie;
     save.shots = (save.shots || 0) + 1;
@@ -2302,12 +2335,12 @@
       has = true; px = x; py = y; pz = z; pw = w;
     }
   }
-  function drapeRing(strip, cx, cz, r, w) {
-    const N = Math.min(strip.max, 48);
+  function drapeRing(strip, cx, cz, r, w, lift) {
+    const N = Math.min(strip.max, 48), lf = lift == null ? 0.12 : lift;
     let has = false, px = 0, py = 0, pz = 0, pc = 0, ps = 0;
     for (let k = 0; k <= N; k++) {
       const a = k / N * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
-      const x = cx + ca * r, z = cz + sa * r, y = hFast(x, z) + 0.12;
+      const x = cx + ca * r, z = cz + sa * r, y = hFast(x, z) + lf;
       if (has) strip.quad(px, py, pz, pc * w, 0, ps * w, x, y, z, ca * w, 0, sa * w);
       has = true; px = x; py = y; pz = z; pc = ca; ps = sa;
     }
@@ -2316,7 +2349,56 @@
   // round 6: nothing is drawn on the course at rest or in the swing. While the aim is turned (drag, coast, keys or wheel) and
   // holdT s after, a soft beam runs from the ball along the aim, then fades over fadeT s. It is drawn along the aim itself while
   // the camera's yaw catches up, so it leans the way you're turning. The Landing guide decides whether it ends in the ring
+  // round 7: while pulling (and until contact), with the Landing guide on, a ring on the course along the aim at the distance
+  // the power card shows: full swings the carry (lie and upgrades, no wind), putts the flat roll, on the drawn green. Here: where
+  // it is (world centre and radius); drawPowerRing draws it on the overlay canvas
+  const PR = { on: false, x: 0, z: 0, d: 0, r: 0, over: false, cx: 0, cy: 0, rx: 0, ry: 0, k: 1, n: 0, pts: new Float32Array(2 * 49), drawn: false };
+  function updatePowerRing() {
+    PR.on = false;
+    const s = G.swing, P = G.pendingShot, F = FEEL.ring;
+    const live = save.settings.guide && !G.paused && !G.map && !G.look && G.hole && ((G.mode === 'swing' && s) || (G.mode === 'impact' && P));
+    if (!live) return;
+    const pw = Math.min(s ? s.power : P.power, 1.12), putt = isPutter(), b = G.ball;
+    const d = putt ? puttRoll(pw) : pullCarry(pw);
+    if (d < (putt ? F.puttMinD : F.minD)) return;
+    PR.on = true; PR.d = d; PR.x = b.x + Math.sin(G.aim) * d; PR.z = b.z + Math.cos(G.aim) * d; PR.over = pw > 1; PR.putt = putt;
+    PR.r0 = Math.min(putt ? F.puttR : clamp(d * F.k, F.rMin, F.rMax), F.clear * d);
+  }
+  // the ring on the overlay canvas: draped points projected; widened to minPx across and to minAspect, clipped off the ball
+  function drawPowerRing() {
+    PR.drawn = false;
+    if (!PR.on) return;
+    const F = FEEL.ring, N = 48, P = PR.pts, lf = PR.putt ? F.puttLift : F.lift;
+    camera.updateMatrixWorld();
+    _v.set(PR.x, hFast(PR.x, PR.z) + lf, PR.z).project(camera); if (_v.z >= 1) return;
+    const cx = (_v.x * 0.5 + 0.5) * VW, cy = (0.5 - _v.y * 0.5) * VH;
+    // at least minPx across on screen: metres per px at the ring's distance
+    const cd = Math.max(0.5, camera.position.distanceTo(_w.set(PR.x, hFast(PR.x, PR.z), PR.z))), mpp = 2 * cd * Math.tan(camera.fov * D2R / 2) / VH;
+    const r = Math.min(Math.max(PR.r0, F.minPx * 0.5 * mpp), F.clear * PR.d);
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (let k = 0; k <= N; k++) {
+      const a = k / N * Math.PI * 2, x = PR.x + Math.cos(a) * r, z = PR.z + Math.sin(a) * r;
+      _v.set(x, hFast(x, z) + lf, z).project(camera); if (_v.z >= 1) return;
+      const px = (_v.x * 0.5 + 0.5) * VW, py = (0.5 - _v.y * 0.5) * VH; P[k * 2] = px; P[k * 2 + 1] = py;
+      x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+    }
+    const rx = (x1 - x0) / 2, ry = (y1 - y0) / 2, kY = ry < F.minAspect * rx ? F.minAspect * rx / Math.max(ry, 0.01) : 1;
+    for (let k = 0; k <= N; k++) P[k * 2 + 1] = cy + (P[k * 2 + 1] - cy) * kY;   // widened about the true centre
+    PR.r = r; PR.cx = cx; PR.cy = cy; PR.rx = rx; PR.ry = ry * kY; PR.k = kY; PR.n = N + 1;
+    // never over the ball: clip its disc (+ ballPad) out of the drawing area
+    const bs = ballScreen(), bm = ballMesh, cdB = Math.max(0.05, camera.position.distanceTo(bm.position)), brpx = bm.scale.x / cdB * VH / (2 * Math.tan(camera.fov * D2R / 2)) + F.ballPad;
+    const PL = PALETTE;
+    fx.save();
+    fx.beginPath(); fx.rect(0, 0, VW, VH); fx.arc(bs[0], bs[1], brpx, 0, Math.PI * 2, true); fx.clip('evenodd');
+    fx.beginPath(); fx.moveTo(P[0], P[1]); for (let k = 1; k <= N; k++) fx.lineTo(P[k * 2], P[k * 2 + 1]); fx.closePath();
+    fx.lineJoin = 'round'; fx.globalAlpha = F.alpha;
+    fx.shadowColor = rgba(PL.green, F.edgeA); fx.shadowBlur = F.edgeBlur;
+    fx.strokeStyle = css(PR.over ? PL.warn : PL.cream); fx.lineWidth = F.linePx; fx.stroke();
+    fx.restore();
+    PR.drawn = true;
+  }
   function updateAimVisuals() {
+    updatePowerRing();
     ring.begin();
     const B = FEEL.beam;
     G.beamT = (G.beamT == null ? 99 : G.beamT) + (G.lastDt || 0);
@@ -2371,7 +2453,7 @@
     let fade = 1;
     if (live && G.trEnd != null) fade = 1 - E.smoothstep(F.hold, F.hold + F.fade, G.time - G.trEnd);
     if (live && G.mode === 'aim' && G.trAim != null) fade = Math.min(fade, 1 - E.smoothstep(0, F.fade, G.time - G.trAim));
-    if (!live || fade <= 0.001) { if (trGlow.mesh.visible) tracer.end(); return; }
+    if (!live || fade <= 0.001) { if (trCore.mesh.visible) tracer.end(); return; }
     matTrace.uniforms.uFade.value = fade;
     // points: the recorded path (thinned to fit), then the ball as drawn, stopping at its back so the ribbon never covers it
     const P = b.path, np = P.length, stride = Math.max(1, Math.ceil(np / (TR_MAX - 2))), X = TRP.x, Y = TRP.y, Z = TRP.z;
@@ -2388,7 +2470,7 @@
     const Ltot = TRP.cum[n - 1], dBall = 2 * E.BALL_R * G.ballScale, cp = camera.position;
     const pure = !!(sh.label && sh.label.indexOf('PURE') === 0);
     if (tracer.pure !== pure || tracer.n !== n) setTraceColours(pure, n);
-    const gp = trGlow.pos, ga = trGlow.al, cpz = trCore.pos, ca = trCore.al, PL = F;
+    const cpz = trCore.pos, ca = trCore.al, PL = F;
     for (let i = 0; i < n; i++) {
       const i0 = i > 0 ? i - 1 : 0, i1 = i < n - 1 ? i + 1 : n - 1;
       const tx = X[i1] - X[i0], ty = Y[i1] - Y[i0], tz = Z[i1] - Z[i0];
@@ -2400,31 +2482,24 @@
       // is held to ballMax of the drawn ball's diameter
       let hw = clamp(dist * PL.wPerM, PL.wMin, PL.wMax) * (PL.start + (1 - PL.start) * k);
       hw = Math.min(hw, 0.5 * PL.ballMax * dBall + 0.15 * fromHead);
-      const hg = hw * PL.glow;
       const head = flying ? 1 - E.smoothstep(0, Math.max(4, Ltot * 0.08), fromHead) : 0;   // brighter near the ball while it flies
-      let o = i * 9;
-      gp[o] = X[i] - sx * hg; gp[o + 1] = Y[i] - sy * hg; gp[o + 2] = Z[i] - sz * hg;
-      gp[o + 3] = X[i]; gp[o + 4] = Y[i]; gp[o + 5] = Z[i];
-      gp[o + 6] = X[i] + sx * hg; gp[o + 7] = Y[i] + sy * hg; gp[o + 8] = Z[i] + sz * hg;
-      o = i * 3; ga[o] = 0; ga[o + 1] = PL.glowA * (1 + PL.headBoost * head); ga[o + 2] = 0;
-      o = i * 6;
+      let o = i * 6;
       cpz[o] = X[i] - sx * hw; cpz[o + 1] = Y[i] - sy * hw; cpz[o + 2] = Z[i] - sz * hw;
       cpz[o + 3] = X[i] + sx * hw; cpz[o + 4] = Y[i] + sy * hw; cpz[o + 5] = Z[i] + sz * hw;
-      const a = PL.coreA + (1 - PL.coreA) * head; o = i * 2; ca[o] = ca[o + 1] = a;
+      const a = PL.coreA * (1 + PL.headBoost * head); o = i * 2; ca[o] = ca[o + 1] = a;   // round 7: the head boost is on the core
     }
-    trGlow.pa.needsUpdate = trGlow.aa.needsUpdate = trCore.pa.needsUpdate = trCore.aa.needsUpdate = true;
-    trGlow.geo.setDrawRange(0, (n - 1) * trGlow.perSeg); trCore.geo.setDrawRange(0, (n - 1) * trCore.perSeg); trGlow.mesh.visible = trCore.mesh.visible = true;
+    trCore.pa.needsUpdate = trCore.aa.needsUpdate = true;
+    trCore.geo.setDrawRange(0, (n - 1) * trCore.perSeg); trCore.mesh.visible = true;
     tracer.n = n;
   }
   // colours only change with the shot (pure: yellow core) or the point count, so they are written then and not every frame
   const TRC = { y: new THREE.Color(PALETTE.yellow), cream: new THREE.Color(PALETTE.cream) };
   function setTraceColours(pure, n) {
-    const gc = trGlow.col, cc = trCore.col, cY = TRC.y, cCore = pure ? TRC.y : TRC.cream;
+    const cc = trCore.col, cCore = pure ? TRC.y : TRC.cream;
     for (let i = tracer.n > 0 && tracer.pure === pure ? tracer.n : 0; i < n; i++) {
-      for (let j = 0; j < 3; j++) { const q = (i * 3 + j) * 3; gc[q] = cY.r; gc[q + 1] = cY.g; gc[q + 2] = cY.b; }
       for (let j = 0; j < 2; j++) { const q = (i * 2 + j) * 3; cc[q] = cCore.r; cc[q + 1] = cCore.g; cc[q + 2] = cCore.b; }
     }
-    trGlow.ca.needsUpdate = true; trCore.ca.needsUpdate = true; tracer.pure = pure;
+    trCore.ca.needsUpdate = true; tracer.pure = pure;
   }
 
   // render interpolation: physics runs at a fixed 240 Hz, so between steps the ball is drawn at
@@ -2438,6 +2513,7 @@
   }
   const _q = new THREE.Quaternion(), _ax = new V3(), _up = new V3(0, 1, 0);
   // round 6: the address ball's size factor: enough for ADDR.ballMinPx CSS px across at this camera distance, 1 .. ballMaxK
+  function clubBack() { if (!isPutter()) return 0; const k = Math.max(1, G.ballScale || 1); return E.BALL_R * (Math.sqrt(2 * k - 1) - 1); }   // putts only (round 7 Task 2)
   function addrBallK(cd) { const px = 2 * E.BALL_R / Math.max(cd, 0.1) * VH / (2 * Math.tan(camera.fov * D2R / 2)); return clamp(ADDR.ballMinPx / px, 1, ADDR.ballMaxK); }
   function updateBallVisual(sdt) {
     const b = G.ball, h = G.hole, bd = G.bd;
@@ -2473,16 +2549,22 @@
       const dx = q.x - q.px, dz = q.z - q.pz, d = Math.hypot(dx, dz);
       if (d > 1e-6) { _ax.set(dz / d, 0, -dx / d); _q.setFromAxisAngle(_ax, d / E.BALL_R); ballMesh.quaternion.premultiply(_q); }
       q.px = q.x; q.pz = q.z;
-      ballMesh.position.set(q.x, q.y + visOff(q.x, q.z, 0), q.z); ballMesh.scale.setScalar(E.BALL_R); G.ballScale = 1;
+      // the green's drawn relief fades out as the ball drops below the rim (the cup is drawn flat at the pin's height)
+      let yd = q.y + visOff(q.x, q.z, 0) * E.smoothstep(0, q.rd, q.y - q.rimY);
+      // above the rim's plane the drawn ball (relief offset included) never dips through the rim's edge
+      if (q.y > q.rimY) { const e = E.CUP_R - Math.hypot(q.x - h.pin.x, q.z - h.pin.z); if (Math.abs(e) < q.rd) yd = Math.max(yd, q.rimY + Math.sqrt(q.rd * q.rd - e * e)); }
+      ballMesh.position.set(q.x, yd, q.z); ballMesh.scale.setScalar(q.rd); G.ballScale = q.rd / E.BALL_R;
       return;
     }
     const cd = camera.position.distanceTo(_v.set(bd.x, bd.y, bd.z));
     // size rules: in the air keep a minimum on-screen size, capped at 4x; on the ground off the green at most 1.5x.
-    // On the green and during every putt the ball is real size, always, with no easing, so the ball-to-cup ratio never
-    // changes; across the fringe the ground cap blends 1 -> 1.5 by position. Other cap changes ease (~0.3 s).
-    const gh = h.height(bd.x, bd.z);
+    // On the green and during every putt the ball is drawn FEEL.ballGreenK x real (round 7: 1.25, so the ball-to-cup ratio is
+    // real golf's with our 1.25x cup; round 6: 1), always, with no easing; across the fringe the cap blends greenK -> 1.5 and the
+    // floor greenK -> 1 by position. Other cap changes ease (~0.3 s).
+    const gh = h.height(bd.x, bd.z), GK = FEEL.ballGreenK;
     const sh = G.mode === 'flight' ? G.shot : null;
-    const qF = 1 + h.fringeW / Math.min(h.grx, h.grz), groundCap = (x, z) => 1 + 0.5 * E.smoothstep(1, qF, h.greenQ(x, z));
+    const qF = 1 + h.fringeW / Math.min(h.grx, h.grz), fringeK = (x, z) => E.smoothstep(1, qF, h.greenQ(x, z));
+    const groundCap = (x, z) => GK + (1.5 - GK) * fringeK(x, z), groundFloor = (x, z) => GK + (1 - GK) * fringeK(x, z);
     const putting = !!(sh && sh.putt) || ((G.mode === 'aim' || G.mode === 'swing' || G.mode === 'impact') && isPutter());
     const onGreen = h.greenQ(bd.x, bd.z) <= 1 && b.state !== 'air';
     let capT = groundCap(bd.x, bd.z);
@@ -2491,9 +2573,9 @@
       // shrink ahead of touchdown so the ball is already at the landing spot's ground cap when it lands
       if (b.vy < 0) { const v = -b.vy, hg = Math.max(0, b.y - E.BALL_R - gh), tl = (Math.sqrt(v * v + 19.62 * hg) - v) / 9.81; if (tl < 0.34) capT = groundCap(bd.x + b.vx * tl, bd.z + b.vz * tl); }
     }
-    if (Math.hypot(b.x - h.pin.x, b.z - h.pin.z) < 1) capT = 1;
+    if (Math.hypot(b.x - h.pin.x, b.z - h.pin.z) < 1) capT = GK;
     if (G.mode === 'aim' || G.mode === 'swing' || G.mode === 'impact') capT = addrBallK(cd);   // round 6: at least ballMinPx at address
-    if (putting) capT = 1;
+    if (putting) capT = GK;
     if (putting || onGreen) { G.ballCap = G.capFrom = G.capTo = capT; G.capT = FEEL.ballCapEase; }
     else {
       // a step in the cap restarts the ease; the fringe blend's small per-frame drift just moves the target
@@ -2502,15 +2584,19 @@
       G.capT += G.lastDt || 0;
       G.ballCap = lerp(G.capFrom, G.capTo, E.smoothstep(0, FEEL.ballCapEase, G.capT));
     }
-    const vr = Math.min(Math.max(E.BALL_R, cd * 0.0042), G.ballCap * E.BALL_R);
+    const vr = putting ? GK * E.BALL_R : Math.max(groundFloor(bd.x, bd.z) * E.BALL_R, Math.min(Math.max(E.BALL_R, cd * 0.0042), G.ballCap * E.BALL_R));
     G.ballScale = vr / E.BALL_R;
     let y = bd.y + (vr - E.BALL_R);
     if (b.drop) y -= b.drop;
+    // round 7: over the hole (a lip, or a roll across it) the drawn ball rests on the rim's edge, never through it (applied with
+    // the relief offset below)
+    let yRim = -Infinity;
+    { const e = E.CUP_R - Math.hypot(bd.x - h.pin.x, bd.z - h.pin.z); if (Math.abs(e) < vr && b.state !== 'holed') yRim = h.pin.y + 0.001 + Math.sqrt(vr * vr - e * e); }
     // resting in the rough: drawn sunk into the lie (drawing only), eased in
     if (G.lieRough && b.state === 'rest') { G.lieK = Math.min(1, (G.lieK || 0) + (G.lastDt || 0) / FEEL.lie.sinkT); y -= FEEL.lie.sink * 2 * vr * E.smoothstep(0, 1, G.lieK); }
     const hag = bd.y - E.BALL_R - gh, vo = visOff(bd.x, bd.z, hag);   // round 5: the green's drawn relief
     G.ballVis = vo;
-    ballMesh.position.set(bd.x, y + vo, bd.z); ballMesh.scale.setScalar(vr);
+    ballMesh.position.set(bd.x, Math.max(y + vo, yRim), bd.z); ballMesh.scale.setScalar(vr);
     shadowMesh.position.set(bd.x, gh + 0.012 + visOff(bd.x, bd.z, 0), bd.z);
     shadowMesh.scale.setScalar(vr * 1.1 * (1 + hag * 0.02));
     matShadow.opacity = 0.34 * clamp(1 - hag / 40, 0.12, 1);
@@ -2532,9 +2618,13 @@
     if (!sk) { G.sinkS = null; return; }
     startSinkAt(sk.x, sk.y, sk.z, sk.vx || 0, G.ivAir ? Math.min(0, G.ivy || 0) : 0, sk.vz || 0, b.t);
   }
+  // round 7: the drop runs with the drawn radius rd (FEEL.ballGreenK x real), so the drawn ball meets the wall, the flagstick and
+  // the bottom; it starts from the drawn centre (the physical one + rd - R)
   function startSinkAt(x, y, z, vx, vy, vz, t0) {
-    const h = G.hole, H = FEEL.holeOut, R = E.BALL_R, rimY = h.pin.y;
-    G.sinkS = { x, y, z, vx, vy, vz, px: x, pz: z, t: 0, t0, tt: 0, holedSeen: false, rimY, yb: rimY - H.depth + R,
+    const h = G.hole, H = FEEL.holeOut, rd = FEEL.ballGreenK * E.BALL_R, rimY = h.pin.y + 0.001;   // round 7: the drawn cup wall's top
+    y += rd - E.BALL_R;
+    { const e = E.CUP_R - Math.hypot(x - h.pin.x, z - h.pin.z); if (Math.abs(e) < rd) y = Math.max(y, rimY + Math.sqrt(rd * rd - e * e)); }   // no overlap with the rim's edge at the start
+    G.sinkS = { x, y, z, vx, vy, vz, px: x, pz: z, t: 0, t0, tt: 0, holedSeen: false, rimY, rd, yb: rimY - H.depth + rd,
       first: true, lastHitT: -1, rattles: 0, hits: [], still: false, log: G.sinkLog ? [[0, x - h.pin.x, y - rimY, z - h.pin.z]] : null };
   }
   function sinkHit(q, kind, v) {
@@ -2545,14 +2635,14 @@
   }
   // advance the drop to animation time `to` (s from its start) in fixed steps
   function stepSink(to) {
-    const q = G.sinkS, h = G.hole, H = FEEL.holeOut, R = E.BALL_R, px = h.pin.x, pz = h.pin.z, rw = E.CUP_R - R, ri = H.poleR + R;
+    const q = G.sinkS, h = G.hole, H = FEEL.holeOut, R = q.rd, px = h.pin.x, pz = h.pin.z, rw = E.CUP_R - R, ri = H.poleR + R;
     if (q.still) return;
     while (q.t + H.step <= to + 1e-9 && !q.still) {
       const s = H.step; q.t += s;
       q.vy -= E.G * s;
       q.x += q.vx * s; q.y += q.vy * s; q.z += q.vz * s;
       let ox = q.x - px, oz = q.z - pz, r = Math.hypot(ox, oz) || 1e-9;
-      // outer limit: the wall below the rim, the rim's edge above it
+      // outer limit: the wall below the rim, the rim's edge above it (round 7: with the drawn radius R)
       const hy = q.y - q.rimY, rc = hy <= 0 ? rw : hy < R ? E.CUP_R - Math.sqrt(R * R - hy * hy) : Infinity;
       if (r > rc) {
         const nx = ox / r, nz = oz / r, vr = q.vx * nx + q.vz * nz;
@@ -3012,6 +3102,10 @@
   /* =================== swing input =================== */
   const touch = $('touch');
   function swingLen() { const Z = FEEL.swingZone; return clamp(VH * Z.len, Z.lenMin, Z.lenMax); }
+  // round 7: power for a pull fraction f (FEEL.power): full swings f^exp up to 1, then linear to the same 1.12 cap; putts f
+  function pullPower(f) { f = clamp(f, 0, 1.12); return isPutter() || f > 1 ? f : Math.pow(f, FEEL.power.exp); }
+  // the carry the card and the ring show for a full-swing power (lie and upgrades, no wind)
+  function pullCarry(pw) { const c = E.CLUBS[G.club]; return E.carryFor(c, pw) * lieMul(c, G.lie) * (1 + 0.022 * save.upg.power); }
   // finger trail for the swing overlay, kept in fixed arrays so moving the finger allocates nothing
   const TRAIL = { x: new Float32Array(60), y: new Float32Array(60), t: new Float64Array(60), n: 0, h: 0 };
   function trailPush(x, y, t) { const i = TRAIL.h; TRAIL.x[i] = x; TRAIL.y[i] = y; TRAIL.t[i] = t; TRAIL.h = (i + 1) % 60; if (TRAIL.n < 60) TRAIL.n++; }
@@ -3063,7 +3157,7 @@
   }
   // a swing from a decided press: the same state the press would have made, then every sample since replayed in order
   function startSwing(p) {
-    const s = G.swing = { id: p.id, x0: p.x0, y0: p.y0, x: p.x0, y: p.y0, xLow: p.x0, yLow: p.y0, maxDy: 0, phase: 'back', power: 0, t0: p.t0, tBottom: 0, tLift: p.t0, ix: p.x0 };
+    const s = G.swing = { id: p.id, x0: p.x0, y0: p.y0, x: p.x0, y: p.y0, xLow: p.x0, yLow: p.y0, maxDy: 0, phase: 'back', power: 0, pull: 0, t0: p.t0, tBottom: 0, tLift: p.t0, ix: p.x0 };
     TRAIL.n = 0; trailPush(p.x0, p.y0, p.t0);
     G.mode = 'swing'; G.beamT = 99; updateHUD(true);
     for (const q of p.smp) { if (G.swing !== s || G.mode !== 'swing') break; swingMove(s, q[0], q[1], q[2], q[3]); }
@@ -3084,9 +3178,9 @@
       // so the first sample that has risen is credited at most one frame (17 ms) of travel
       if (s.maxDy - dy <= FEEL.tempoLift) { s.tLift = now; s.lifted = false; }
       else if (!s.lifted) { s.lifted = true; s.tLift = Math.max(s.tLift, now - 17); }
-      s.power = clamp(s.maxDy / L, 0, 1.12);
+      s.pull = clamp(s.maxDy / L, 0, 1.12); s.power = pullPower(s.pull);
       if (s.maxDy > 10 && dy < s.maxDy - Math.max(14, s.maxDy * 0.12)) { s.phase = 'down'; s.tDown = s.tLift; }
-    } else if (dy > s.maxDy) { s.phase = 'back'; s.maxDy = dy; s.tBottom = now; s.tLift = now; s.lifted = false; s.power = clamp(s.maxDy / L, 0, 1.12); s.xLow = s.x; s.yLow = s.y; }
+    } else if (dy > s.maxDy) { s.phase = 'back'; s.maxDy = dy; s.tBottom = now; s.tLift = now; s.lifted = false; s.pull = clamp(s.maxDy / L, 0, 1.12); s.power = pullPower(s.pull); s.xLow = s.x; s.yLow = s.y; }
     // club reversal (how the club moves only; the shot's threshold above is unchanged): the first sample revPx above the
     // lowest point starts the club down, and finger progress u (0 at the lowest point, 1 at the start line) drives it
     const rise = s.maxDy - dy;
@@ -3183,7 +3277,7 @@
   function fire(now) {
     const s = G.swing; if (!s) return;
     const L = swingLen();
-    if (s.power < 0.03) { cancelSwing(); return; }
+    if (s.pull < 0.03) { cancelSwing(); return; }   // round 7: on the pull (3% of swingLen), not the curved power
     // club path from the flick's angle (round 5): the upstroke from the lowest point to where it crosses the start line, from
     // straight up, right +. Right-handed: right is in-to-out (push-draw), left is out-to-in (pull-fade/slice). f = tan(phi) goes
     // through FEEL.path (a dead zone, then a soft slope). The backswing's own angle (press -> lowest point) is kept for display only
@@ -3193,7 +3287,7 @@
     CV.alphaT = swipe;
     const dev = -swipe;
     const td = (now - s.tDown) / 1000;
-    const tempoMul = isPutter() ? 1 : td <= 0.34 ? 1 : clamp(1 - (td - 0.34) * 0.75, 0.6, 1);   // round 6: no tempo on putts
+    const TP = FEEL.tempo, tempoMul = isPutter() ? 1 : td <= TP.slow ? 1 : clamp(1 - (td - TP.slow) * TP.perS, TP.min, 1);   // round 6: no tempo on putts
     G.swingStats = { phi: G.phi, beta: G.beta };
     // the finger commits the swing; the shot fires when the clubhead actually reaches the ball
     G.pendingShot = { power: s.power, dev, tempoMul, f };
@@ -3316,10 +3410,11 @@
     fx.beginPath(); fx.moveTo(cx, cy - r0); fx.lineTo(cx, cy - r1); fx.stroke();
     fx.restore();
   }
-  // the address chevron's point (CSS px): under the ball, raised if a full pull from there would not fit above the bottom edge
+  // the address chevron's point (CSS px): under the ball, raised (round 7: above the ball if it has to) so a fitK x swingLen pull
+  // from it ends fitPad px above the bottom edge and the bottom safe-area inset
   function chevronAt() {
     const H = FEEL.hint, bs = ballScreen(), L = swingLen();
-    return [bs[0], Math.max(bs[1] + 14, Math.min(bs[1] + H.below * VH, VH - H.fitPad - L))];
+    return [bs[0], Math.max(H.chev + 12, Math.min(bs[1] + H.below * VH, VH - safeBottom() - H.fitPad - H.fitK * L))];
   }
   // a cream card (green left edge, like the HUD cards) centred on x with its bottom at y; lines: [text, font, colour, line px]
   function fxCard(x, y, lines, a) {
@@ -3377,6 +3472,7 @@
     drawPinMarker();
     const L = swingLen();
     drawFan(dt, L);
+    if (!G.noPowerRing) drawPowerRing();   // round 7 (G.noPowerRing: tests only)
     const PL = PALETTE, cream = css(PL.cream), green = css(PL.green), yellow = css(PL.yellow), warn = css(PL.warn);
     if (G.mode === 'aim' && !G.map && !G.look) {
       // round 6: the chevron under the ball at every address (the only hint), where a full pull from it fits above the bottom
@@ -3493,7 +3589,7 @@
       hudSet('pwCarry', 'text', G.lastPutt != null ? 'last ' + fmtFt(G.lastPutt) : '');
     } else {
       hudSet('pwPct', 'text', Math.round(pw * 100) + '%');
-      hudSet('pwCarry', 'text', fmtD(E.carryFor(club, pw) * lieMul(club, G.lie) * (1 + 0.022 * save.upg.power)));
+      hudSet('pwCarry', 'text', fmtD(pullCarry(pw)));
     }
   }
   function updateHUD(force) {
@@ -3855,5 +3951,9 @@
     // round 6: the gesture decision, look mode, camera preset, putt curve, flight strip and label
     gesture: () => G.gesture, pressDecide, look: () => (G.look ? { phase: G.look.phase, t: G.look.t, px: G.look.px, pz: G.look.pz, zoom: G.look.zoom } : null), lookLast: () => G.lookLast || null,
     lookMarker: () => G.lookMarker || null, toggleLook, toggleMap, cycleCam, camPreset, addrHorizonY, addrBallK, chevronAt, puttRoll, puttPull, fmtFt,
-    updateHUD, stats: () => (G.shot ? G.shot.stats : null), distLabel: () => G.distLabel || null, beamT: () => G.beamT, beamOn: () => beam.mesh.visible, aimCoast: () => G.aimCoast, camYaw: () => G.camYaw, smashFor, ADDRESS: { addrTarget, lookTarget } };
+    updateHUD, stats: () => (G.shot ? G.shot.stats : null), distLabel: () => G.distLabel || null, beamT: () => G.beamT, beamOn: () => beam.mesh.visible, aimCoast: () => G.aimCoast, camYaw: () => G.camYaw, smashFor, ADDRESS: { addrTarget, lookTarget },
+    // round 7: the pull -> power curve, the carry the card and ring show, the live ring (state and the points drawn), the putter's set-back
+    hFast, pullPower, pullCarry, powerRing: () => (PR.on ? Object.assign({}, PR, { pts: Array.from(PR.pts.subarray(0, PR.n * 2)) }) : null), clubBack, sinkRd: () => (G.sinkS ? G.sinkS.rd : null),
+    // round 7: the putting ball's drawn scale (FEEL and now), the green tint in use, the long clubs' drawn plane steepening now (deg)
+    puttBall: () => ({ k: FEEL.ballGreenK, now: G.ballScale }), tint: () => ({ tintA: greenTint.uTintA.value, tintH: greenTint.uTintH.value }), swingSteep: () => CV.stD || 0 };
 })();
