@@ -27,6 +27,9 @@ const OUTF = process.argv[3] || OUT + '/swing2.json';
   await page.waitForFunction(() => window.__tempo && window.__tempo.G.mode === 'menu', null, { timeout: 180000 });
   if (process.env.FEEL) await page.evaluate((j) => { const F = window.__tempo.FEEL, o = JSON.parse(j); for (const k in o) { if (typeof o[k] === 'object' && !Array.isArray(o[k])) { for (const q in o[k]) { if (typeof o[k][q] === 'object') Object.assign(F[k][q], o[k][q]); else F[k][q] = o[k][q]; } } else F[k] = o[k]; } }, process.env.FEEL);
 
+  // round 7: TSCALE scales the finger path's times (pull, hold, upstroke) and its sideways drift, so a build with a longer
+  // swingLen gets the same path at the same thumb speed; SLOWCASE=1 adds a slow upstroke (T 450 ms) that scores a slow tempo
+  await page.evaluate(([k, slow]) => { window.__TS = k; window.__SLOW = slow; }, [+(process.env.TSCALE || 1), !!process.env.SLOWCASE]);
   if (process.env.Y0) await page.evaluate((y) => { window.__Y0 = y; }, +process.env.Y0);
   // Y0FROM=<an earlier result file>: the same start line per run as that build used (round 5's zone moved it per run)
   if (process.env.Y0FROM) await page.evaluate((l) => { window.__Y0L = l; }, JSON.parse(fs.readFileSync(process.env.Y0FROM, 'utf8')).results.map(r => r.y0));
@@ -71,9 +74,9 @@ const OUTF = process.argv[3] || OUT + '/swing2.json';
       for (let i = 0; i < 40; i++) frame();
     };
     const run = (o) => {
-      const D = L * 0.99, Tup = o.T / 1000;
-      const t0 = now() + 1 / 60 - (o.phase || 0) / 1000, tP = t0 + 0.45, tH = tP + (o.hold || 0) / 1000;
-      const yAt = (t) => t <= t0 ? Y0 : t <= tP ? Y0 + D * (1 - Math.pow(1 - (t - t0) / 0.45, 2)) : t <= tH ? Y0 + D : Y0 + D - D * Math.pow((t - tH) / Tup, 2);
+      const TS = window.__TS || 1, D = L * 0.99, Tup = o.T / 1000 * TS, TPu = 0.45 * TS;
+      const t0 = now() + 1 / 60 - (o.phase || 0) / 1000, tP = t0 + TPu, tH = tP + (o.hold || 0) / 1000 * TS;
+      const yAt = (t) => t <= t0 ? Y0 : t <= tP ? Y0 + D * (1 - Math.pow(1 - (t - t0) / TPu, 2)) : t <= tH ? Y0 + D : Y0 + D - D * Math.pow((t - tH) / Tup, 2);
       const tCross = tH + Tup;
       R.sub = []; R.hitT = null; frames.length = 0;
       const out = { tCross, tRev: null, tFire: null, shot: null, gap: null, tBall: null };
@@ -102,7 +105,7 @@ const OUTF = process.argv[3] || OUT + '/swing2.json';
     const i7 = E.CLUBS.findIndex(c => c.id === '7I');
     const results = [];
     let runIdx = 0;
-    for (const [name, ci] of [['driver', 0], ['7-iron', i7]]) for (const [T, hold] of [[120, 0], [200, 0], [300, 0], [200, 500]]) for (const phase of [0, 4, 8, 12, 16]) {
+    for (const [name, ci] of [['driver', 0], ['7-iron', i7]]) for (const [T, hold] of [[120, 0], [200, 0], [300, 0], [200, 500]].concat(window.__SLOW ? [[450, 0]] : [])) for (const phase of [0, 4, 8, 12, 16]) {
       R.k = 3000 * (++runIdx);   // every run starts at the same clock time in every build, so finger samples are bit-identical
       putAt(0, 0.6, ci);
       { const TT = window.__tempo; if (window.__Y0L) Y0 = window.__Y0L[runIdx - 1]; else if (window.__Y0) Y0 = window.__Y0; else if (TT.swingZone) Y0 = Math.max(560, Math.ceil(TT.swingZone().top) + 8); }   // round 6: Y0=<px> forces the start line (the same finger path in every build)

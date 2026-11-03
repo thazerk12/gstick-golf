@@ -99,7 +99,8 @@ const PHASES = process.env.PHASES ? process.env.PHASES.split(',').map(Number) : 
           const hitBefore = CV.hit; frame(false);
           const ph = CV.phase, hitNow = !hitBefore && CV.hit;
           if ((ph === 'back' || ph === 'down' || ph === 'commit') && contactK == null && CV.a > aTop) { aTop = CV.a; topK = S.k; }
-          if (contactK == null && (ph === 'down' || ph === 'commit' || hitNow)) { inDown++; if (onScreen(clubPts(ci))) ok++; }
+          if (contactK == null && (ph === 'down' || ph === 'commit' || hitNow)) { inDown++; if (onScreen(clubPts(ci))) ok++;
+            if (window.__dbgLog) { T.camera.updateMatrixWorld(); const q = clubPts(ci).map(p => px(p.x, p.y, p.z)); window.__dbgLog.push([ph, +CV.a.toFixed(1), +CV.b.toFixed(1), Math.round(Math.min(...q.map(r => r[0]))), Math.round(Math.min(...q.map(r => r[1]))), Math.round(Math.max(...q.map(r => r[0]))), Math.round(Math.max(...q.map(r => r[1])))]); } }
           if (hitNow) contactK = S.k;
           if (stopAt && stopAt(S.k - k0)) { stopped = S.k - k0; break; }
           if (contactK != null && S.k > contactK + 10) break;

@@ -26,6 +26,9 @@ const OUT = path.dirname(OUTF);
   const f = OUT + '/s4_' + HZ + '_' + path.basename(path.dirname(path.resolve(SRC))) + '.html'; fs.writeFileSync(f, html);
   await page.goto('file://' + f);
   await page.waitForFunction(() => window.__tempo && window.__tempo.G.mode === 'menu', null, { timeout: 180000 });
+  // round 7: FEEL overrides (as swing2.js); TSCALE scales the finger path's times and sideways drift (see swing2.js)
+  if (process.env.FEEL) await page.evaluate((j) => { const F = window.__tempo.FEEL, o = JSON.parse(j); for (const k in o) { if (typeof o[k] === 'object' && !Array.isArray(o[k])) { for (const q in o[k]) { if (typeof o[k][q] === 'object') Object.assign(F[k][q], o[k][q]); else F[k][q] = o[k][q]; } } else F[k] = o[k]; } }, process.env.FEEL);
+  await page.evaluate((k) => { window.__TS = k; }, +(process.env.TSCALE || 1));
   if (process.env.Y0) await page.evaluate((y) => { window.__Y0 = y; }, +process.env.Y0);
   // Y0FROM=<an earlier result file>: the same start line per run as that build used (round 5's zone moved it per run)
   if (process.env.Y0FROM) await page.evaluate((l) => { window.__Y0L = l; }, JSON.parse(fs.readFileSync(process.env.Y0FROM, 'utf8')).results.map(r => r.y0));
@@ -73,10 +76,10 @@ const OUT = path.dirname(OUTF);
       for (let i = 0; i < 40; i++) frame();
     };
     const run = (o) => {
-      const D = Math.round(L * 0.99), Tup = o.T / 1000;
-      const t0 = now() + FD - (o.phase || 0) / 1000, tP = t0 + 0.45, tH = tP + (o.hold || 0) / 1000;
-      const yAt = (t) => t <= t0 ? Y0 : t <= tP ? Y0 + D * (1 - Math.pow(1 - (t - t0) / 0.45, 2)) : t <= tH ? Y0 + D : Y0 + D - D * Math.pow((t - tH) / Tup, 2);
-      const xAt = (t) => X + (t <= tH ? 0 : (o.drift || 0) * Math.min(1.3, (t - tH) / Tup));
+      const TS = window.__TS || 1, D = Math.round(L * 0.99), Tup = o.T / 1000 * TS, TPu = 0.45 * TS;
+      const t0 = now() + FD - (o.phase || 0) / 1000, tP = t0 + TPu, tH = tP + (o.hold || 0) / 1000 * TS;
+      const yAt = (t) => t <= t0 ? Y0 : t <= tP ? Y0 + D * (1 - Math.pow(1 - (t - t0) / TPu, 2)) : t <= tH ? Y0 + D : Y0 + D - D * Math.pow((t - tH) / Tup, 2);
+      const xAt = (t) => X + (t <= tH ? 0 : (o.drift || 0) * TS * Math.min(1.3, (t - tH) / Tup));
       const tCross = tH + Tup;
       frames.length = 0; R.sub = []; R.hitT = null;
       const out = { tCross, tRev: null, tFire: null, shot: null, tBall: null, fBall: null };
